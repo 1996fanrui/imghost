@@ -20,11 +20,11 @@ const UnitName = "imghostd"
 var NotInstalledMessage string
 
 // configLoader is the hook through which non-version subcommands verify
-// that the shared XDG config is readable. Tests swap this out so the CLI
+// that the shared XDG config is readable and retrieve settings (listen_addr,
+// api_key) needed to talk to the daemon. Tests swap this out so the CLI
 // never touches the real filesystem.
-var configLoader = func() error {
-	_, err := config.Load()
-	return err
+var configLoader = func() (*config.Config, error) {
+	return config.Load()
 }
 
 var rootCmd = &cobra.Command{
@@ -33,11 +33,18 @@ var rootCmd = &cobra.Command{
 	Long:          "imghost is the user-facing CLI for the imghostd daemon.",
 	SilenceUsage:  true,
 	SilenceErrors: true,
+	CompletionOptions: cobra.CompletionOptions{
+		DisableDefaultCmd: true,
+	},
 }
 
 func init() {
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(serviceCmd)
+	rootCmd.AddCommand(putCmd)
+	rootCmd.AddCommand(getCmd)
+	rootCmd.AddCommand(rmCmd)
+	rootCmd.AddCommand(aclCmd)
 }
 
 // Execute runs the cobra root command.
@@ -49,7 +56,7 @@ func Execute() error {
 // caller can exit non-zero. It is used as a PersistentPreRunE on every
 // non-version subcommand to guarantee CLI and daemon see the same config.
 func requireConfig(_ *cobra.Command, _ []string) error {
-	if err := configLoader(); err != nil {
+	if _, err := configLoader(); err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
 	return nil

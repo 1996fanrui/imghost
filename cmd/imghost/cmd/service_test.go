@@ -5,6 +5,8 @@ import (
 	"io"
 	"strings"
 	"testing"
+
+	"github.com/1996fanrui/imghost/internal/config"
 )
 
 type fakeAdapter struct {
@@ -25,7 +27,7 @@ func withTestEnv(t *testing.T, a serviceAdapter) func() {
 	origAdapter := adapter
 	origLoader := configLoader
 	adapter = a
-	configLoader = func() error { return nil }
+	configLoader = func() (*config.Config, error) { return &config.Config{}, nil }
 	return func() {
 		adapter = origAdapter
 		configLoader = origLoader
@@ -73,7 +75,7 @@ func TestServiceNotInstalledPrintsGuidance(t *testing.T) {
 func TestServiceRequireConfigFailure(t *testing.T) {
 	restore := withTestEnv(t, &fakeAdapter{})
 	defer restore()
-	configLoader = func() error { return io.ErrUnexpectedEOF }
+	configLoader = func() (*config.Config, error) { return nil, io.ErrUnexpectedEOF }
 	if _, err := runService(t, "service", "status"); err == nil {
 		t.Fatal("expected config load error to propagate")
 	}
@@ -89,7 +91,7 @@ func TestServiceWindowsExitsZeroForAllSubcommands(t *testing.T) {
 	restore := withTestEnv(t, fake)
 	defer restore()
 	// Simulate a missing / broken config on the host.
-	configLoader = func() error { return io.ErrUnexpectedEOF }
+	configLoader = func() (*config.Config, error) { return nil, io.ErrUnexpectedEOF }
 	origGOOS := serviceGOOS
 	serviceGOOS = "windows"
 	defer func() { serviceGOOS = origGOOS }()
