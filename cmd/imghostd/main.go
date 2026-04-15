@@ -1,4 +1,4 @@
-// Command imghost runs the file hosting HTTP server.
+// Command imghostd runs the file hosting HTTP server.
 //
 // @title                       imghost API
 // @version                     1.0
@@ -11,6 +11,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 
@@ -19,6 +20,11 @@ import (
 )
 
 func main() {
+	flag.Parse()
+	if len(flag.Args()) > 0 {
+		fmt.Fprintln(os.Stderr, "unexpected argument:", flag.Args()[0])
+		os.Exit(2)
+	}
 	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "config error:", err)

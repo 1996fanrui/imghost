@@ -2,7 +2,6 @@ package server
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 
 	"github.com/1996fanrui/imghost/internal/apierror"
@@ -10,11 +9,9 @@ import (
 	"github.com/1996fanrui/imghost/internal/storage"
 )
 
-// ACLHandler serves GET/PUT/DELETE /<path>?acl.
-// Reserved-path restrictions intentionally DO NOT apply here: the router sends
-// /swagger/* to the swagger handler before this one is reached.
+// ACLHandler serves GET/PUT/DELETE /<root>/<path>?acl. Resolution is done by
+// the router; handlers consume the pre-resolved urlKey via resolvedContext.
 type ACLHandler struct {
-	DataDir   string
 	PermStore *storage.PermStore
 	APIKey    string
 }
@@ -32,23 +29,15 @@ func (h *ACLHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		apierror.BadRequest(w, "invalid query")
 		return
 	}
-	cleaned, _, err := ResolvePath(h.DataDir, r.URL.EscapedPath())
-	if err != nil {
-		if errors.Is(err, ErrSymlinkEscape) {
-			apierror.Forbidden(w, "symlink escape")
-			return
-		}
-		apierror.BadRequest(w, "invalid path")
-		return
-	}
+	rc := resolvedFrom(r)
 
 	switch r.Method {
 	case http.MethodGet:
-		h.doGet(w, cleaned)
+		h.doGet(w, rc.urlKey)
 	case http.MethodPut:
-		h.doPut(w, r, cleaned)
+		h.doPut(w, r, rc.urlKey)
 	case http.MethodDelete:
-		h.doDelete(w, cleaned)
+		h.doDelete(w, rc.urlKey)
 	default:
 		apierror.MethodNotAllowed(w, "method not allowed")
 	}
@@ -83,8 +72,8 @@ func validateACLQuery(r *http.Request) bool {
 // @Failure      401  {object}  apierror.Response
 // @Failure      404  {object}  apierror.Response
 // @Router       /{path}/acl [get]
-func (h *ACLHandler) doGet(w http.ResponseWriter, cleaned string) {
-	a, ok, err := h.PermStore.Get(cleaned)
+func (h *ACLHandler) doGet(w http.ResponseWriter, urlKey string) {
+	a, ok, err := h.PermStore.Get(urlKey)
 	if err != nil {
 		apierror.InternalError(w, "permstore read")
 		return
@@ -95,7 +84,7 @@ func (h *ACLHandler) doGet(w http.ResponseWriter, cleaned string) {
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(map[string]string{"path": cleaned, "access": string(a)})
+	_ = json.NewEncoder(w).Encode(map[string]string{"path": urlKey, "access": string(a)})
 }
 
 // doPut sets the explicit ACL for a path.
@@ -112,7 +101,7 @@ func (h *ACLHandler) doGet(w http.ResponseWriter, cleaned string) {
 // @Failure      400  {object}  apierror.Response
 // @Failure      401  {object}  apierror.Response
 // @Router       /{path}/acl [put]
-func (h *ACLHandler) doPut(w http.ResponseWriter, r *http.Request, cleaned string) {
+func (h *ACLHandler) doPut(w http.ResponseWriter, r *http.Request, urlKey string) {
 	var b aclBody
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
@@ -129,7 +118,7 @@ func (h *ACLHandler) doPut(w http.ResponseWriter, r *http.Request, cleaned strin
 		apierror.BadRequest(w, "invalid access")
 		return
 	}
-	if err := h.PermStore.Put(cleaned, a); err != nil {
+	if err := h.PermStore.Put(urlKey, a); err != nil {
 		apierror.InternalError(w, "permstore write")
 		return
 	}
@@ -148,8 +137,8 @@ func (h *ACLHandler) doPut(w http.ResponseWriter, r *http.Request, cleaned strin
 // @Failure      401  {object}  apierror.Response
 // @Failure      404  {object}  apierror.Response
 // @Router       /{path}/acl [delete]
-func (h *ACLHandler) doDelete(w http.ResponseWriter, cleaned string) {
-	_, ok, err := h.PermStore.Get(cleaned)
+func (h *ACLHandler) doDelete(w http.ResponseWriter, urlKey string) {
+	_, ok, err := h.PermStore.Get(urlKey)
 	if err != nil {
 		apierror.InternalError(w, "permstore read")
 		return
@@ -158,7 +147,7 @@ func (h *ACLHandler) doDelete(w http.ResponseWriter, cleaned string) {
 		apierror.NotFound(w, "no explicit rule")
 		return
 	}
-	if err := h.PermStore.Delete(cleaned); err != nil {
+	if err := h.PermStore.Delete(urlKey); err != nil {
 		apierror.InternalError(w, "permstore delete")
 		return
 	}

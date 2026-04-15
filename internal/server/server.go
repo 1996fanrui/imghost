@@ -9,8 +9,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	httpSwagger "github.com/swaggo/http-swagger/v2"
+	bolt "go.etcd.io/bbolt"
 
 	"github.com/1996fanrui/imghost/internal/apierror"
 	"github.com/1996fanrui/imghost/internal/config"
@@ -22,51 +22,21 @@ import (
 	_ "github.com/1996fanrui/imghost/docs"
 )
 
-// New builds the HTTP handler, wiring the file/ACL handlers and the Swagger UI.
+// New builds the HTTP handler, wiring the file/ACL handlers, health, and
+// Swagger UI against the supplied config.
 func New(cfg *config.Config, fs storage.FS, permstore *storage.PermStore) http.Handler {
-	resolver := &permission.Resolver{Store: permstore, Default: cfg.DefaultAccess}
+	resolver := &permission.Resolver{Store: permstore}
 	file := &FileHandler{
-		DataDir:   cfg.DataDir,
 		FS:        fs,
 		PermStore: permstore,
 		Resolver:  resolver,
 		APIKey:    cfg.APIKey,
 	}
 	acl := &ACLHandler{
-		DataDir:   cfg.DataDir,
 		PermStore: permstore,
 		APIKey:    cfg.APIKey,
 	}
-
-	r := chi.NewRouter()
-
-	// Register swagger UI and doc JSON. Non-GET returns 405. Derive the bare
-	// path from the pattern at runtime so reserved.go remains the single
-	// source of truth for swagger path literals.
-	swaggerPattern := "/swagger/*"
-	r.Handle(swaggerPattern, swaggerEntry())
-	r.Handle(swaggerPattern[:len(swaggerPattern)-2], swaggerEntry())
-
-	// Catch-all: dispatch between ACL and file handler based on query.
-	r.HandleFunc("/*", func(w http.ResponseWriter, req *http.Request) {
-		if req.Method != http.MethodGet && req.Method != http.MethodPut && req.Method != http.MethodDelete {
-			apierror.MethodNotAllowed(w, "method not allowed")
-			return
-		}
-		route, err := routeByQuery(req)
-		if err != nil {
-			apierror.BadRequest(w, err.Error())
-			return
-		}
-		switch route {
-		case routeACL:
-			acl.ServeHTTP(w, req)
-		case routeFile:
-			file.ServeHTTP(w, req)
-		}
-	})
-
-	return r
+	return newRouter(cfg, file, acl)
 }
 
 type routeKind int
@@ -86,7 +56,6 @@ func routeByQuery(req *http.Request) (routeKind, error) {
 	if !present {
 		return routeFile, nil
 	}
-	// acl present: must be empty value AND only query key.
 	if len(vals) != 1 || vals[0] != "" {
 		return routeFile, errors.New("acl must be a bare query key without value")
 	}
@@ -107,17 +76,23 @@ func swaggerEntry() http.Handler {
 	})
 }
 
+// boltOpenTimeout bounds how long bbolt waits for the exclusive file lock.
+// Exposed as a package-level var (not const) so tests can shrink it; the
+// default 5s matches REQ-BO05 fail-fast semantics for production.
+var boltOpenTimeout = 5 * time.Second
+
 // Start loads dependencies, runs the HTTP server, and handles graceful
-// shutdown on SIGINT/SIGTERM.
+// shutdown on SIGINT/SIGTERM. bbolt is opened with boltOpenTimeout so a
+// stale lock surfaces as a startup error rather than hanging.
 func Start(ctx context.Context, cfg *config.Config) error {
-	permstore, err := storage.Open(cfg.DBPath)
+	permstore, err := storage.OpenWithOptions(cfg.DBPath, &bolt.Options{Timeout: boltOpenTimeout})
 	if err != nil {
-		return fmt.Errorf("open permstore: %w", err)
+		return fmt.Errorf("open permstore at %s: %w", cfg.DBPath, err)
 	}
 
 	handler := New(cfg, storage.DefaultFS, permstore)
 	srv := &http.Server{
-		Addr:              fmt.Sprintf(":%d", cfg.Port),
+		Addr:              cfg.ListenAddr,
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
