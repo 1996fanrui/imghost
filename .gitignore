@@ -42,3 +42,6 @@ AGENTS.md
 requirements/
 bin/
 vendor/
+
+# Runtime data
+/data/

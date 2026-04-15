@@ -27,9 +27,12 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 # Runtime stage: alpine for shell + ca-certificates (outbound HTTPS).
 FROM alpine:3.22
 
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates su-exec
 
 COPY --from=builder /out/imghost /usr/local/bin/imghost
+COPY scripts/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh \
+    && mkdir -p /data /var/lib/imghost
 
 EXPOSE 34286
-ENTRYPOINT ["/usr/local/bin/imghost"]
+ENTRYPOINT ["/entrypoint.sh"]
