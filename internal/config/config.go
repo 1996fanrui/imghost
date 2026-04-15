@@ -8,7 +8,6 @@ package config
 import (
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 
@@ -32,6 +31,11 @@ type Config struct {
 
 	// DBPath is derived during Load; it is not a TOML field.
 	DBPath string `toml:"-"`
+
+	// DefaultRootInjected is true when Load synthesized the built-in
+	// `_default` root because the user configured no [[root]]. The daemon
+	// logs this once at startup; the CLI stays silent.
+	DefaultRootInjected bool `toml:"-"`
 }
 
 const (
@@ -138,12 +142,12 @@ func injectDefaultRoot(cfg *Config) error {
 	if err := os.MkdirAll(path, 0o755); err != nil {
 		return fmt.Errorf("create default root %s: %w", path, err)
 	}
-	log.Printf("config: no [[root]] configured; injecting %s -> %s", defaultRootName, path)
 	cfg.Roots = append(cfg.Roots, Root{
 		Name:   defaultRootName,
 		Path:   path,
 		Access: permission.Public,
 	})
+	cfg.DefaultRootInjected = true
 	return nil
 }
 

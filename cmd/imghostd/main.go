@@ -13,6 +13,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/1996fanrui/imghost/internal/config"
@@ -29,6 +30,9 @@ func main() {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "config error:", err)
 		os.Exit(1)
+	}
+	if cfg.DefaultRootInjected {
+		log.Printf("config: no [[root]] configured; injecting %s -> %s", cfg.Roots[0].Name, cfg.Roots[0].Path)
 	}
 	if err := server.Start(context.Background(), cfg); err != nil {
 		fmt.Fprintln(os.Stderr, "server error:", err)
