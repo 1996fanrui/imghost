@@ -23,6 +23,8 @@ run_lints() {
 }
 
 run_tests() {
+    info "Running go vet..."
+    go vet ./...
     info "Running Go tests..."
     go test ./...
     info "Running shellcheck..."
