@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# imghost — thin curl wrapper for the imghost HTTP API.
+#
+# Usage:
+#   imghost put    <remote-path> <local-file>
+#   imghost get    <remote-path> [-o <local-file>]
+#   imghost rm     <remote-path>
+#   imghost acl get <remote-path>
+#   imghost acl set <remote-path> <public|private>
+#   imghost acl rm  <remote-path>
+#
+# Examples:
+#   imghost put /photos/cat.jpg ./cat.jpg
+#   imghost get /photos/cat.jpg -o cat.jpg
+#   imghost rm  /photos/cat.jpg
+#   imghost acl set /photos/cat.jpg private
+#   imghost acl get /photos/cat.jpg
+#   imghost acl rm  /photos/cat.jpg
+#
+# Config via environment:
+#   IMGHOST_URL       base URL       (default: http://localhost:34286)
+#   IMGHOST_API_KEY   bearer token   (default: change-me, matches server default)
+set -euo pipefail
+
+BASE="${IMGHOST_URL:-http://localhost:34286}"
+IMGHOST_API_KEY="${IMGHOST_API_KEY:-change-me}"
+
+normalize_path() {
+    # Ensure the remote path starts with exactly one leading slash.
+    local p=$1
+    [[ $p == /* ]] || p="/$p"
+    printf '%s' "$p"
+}
+
+auth_header() {
+    printf 'Authorization: Bearer %s' "${IMGHOST_API_KEY}"
+}
+
+cmd_put() {
+    [[ $# -eq 2 ]] || die "usage: imghost put <remote-path> <local-file>"
+    local remote local_file
+    remote=$(normalize_path "$1")
+    local_file=$2
+    [[ -f $local_file ]] || die "local file not found: $local_file"
+    curl --fail-with-body -sS -X PUT \
+         -H "$(auth_header)" \
+         --data-binary "@${local_file}" \
+         "${BASE}${remote}"
+    echo
+}
+
+cmd_get() {
+    local out=-
+    local args=()
+    while (($#)); do
+        case $1 in
+            -o) out=$2; shift 2 ;;
+            *)  args+=("$1"); shift ;;
+        esac
+    done
+    [[ ${#args[@]} -eq 1 ]] || die "usage: imghost get <remote-path> [-o <local-file>]"
+    local remote
+    remote=$(normalize_path "${args[0]}")
+    curl --fail-with-body -sS -H "$(auth_header)" -o "$out" "${BASE}${remote}"
+}
+
+cmd_rm() {
+    [[ $# -eq 1 ]] || die "usage: imghost rm <remote-path>"
+    local remote
+    remote=$(normalize_path "$1")
+    curl --fail-with-body -sS -X DELETE -H "$(auth_header)" "${BASE}${remote}"
+}
+
+cmd_acl() {
+    local sub=${1:-}
+    shift || true
+    case $sub in
+        get)
+            [[ $# -eq 1 ]] || die "usage: imghost acl get <remote-path>"
+                    local remote; remote=$(normalize_path "$1")
+            curl --fail-with-body -sS -H "$(auth_header)" "${BASE}${remote}?acl"
+            echo
+            ;;
+        set)
+            [[ $# -eq 2 ]] || die "usage: imghost acl set <remote-path> <public|private>"
+                    local remote access
+            remote=$(normalize_path "$1")
+            access=$2
+            [[ $access == public || $access == private ]] || die "access must be public or private"
+            curl --fail-with-body -sS -X PUT \
+                 -H "$(auth_header)" \
+                 -H 'Content-Type: application/json' \
+                 -d "{\"access\":\"${access}\"}" \
+                 "${BASE}${remote}?acl"
+            echo
+            ;;
+        rm)
+            [[ $# -eq 1 ]] || die "usage: imghost acl rm <remote-path>"
+                    local remote; remote=$(normalize_path "$1")
+            curl --fail-with-body -sS -X DELETE -H "$(auth_header)" "${BASE}${remote}?acl"
+            ;;
+        *)
+            die "usage: imghost acl <get|set|rm> ..."
+            ;;
+    esac
+}
+
+main() {
+    local cmd=${1:-}
+    shift || true
+    case $cmd in
+        put) cmd_put "$@" ;;
+        get) cmd_get "$@" ;;
+        rm)  cmd_rm  "$@" ;;
+        acl) cmd_acl "$@" ;;
+        -h|--help|help|"")
+            sed -n '2,/^set -euo/p' "$0" | sed -n 's/^# \{0,1\}//p' | sed '$d'
+            ;;
+        *) die "unknown command: $cmd (try 'imghost help')" ;;
+    esac
+}
+
+main "$@"
