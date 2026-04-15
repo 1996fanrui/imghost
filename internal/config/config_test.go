@@ -19,8 +19,10 @@ func writeConfig(t *testing.T, toml string) string {
 	t.Helper()
 	cfgHome := t.TempDir()
 	stateHome := t.TempDir()
+	dataHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfgHome)
 	t.Setenv("XDG_STATE_HOME", stateHome)
+	t.Setenv("XDG_DATA_HOME", dataHome)
 	// adrg/xdg reads env lazily on first call. Force a reload per test.
 	reloadXDG()
 	dir := filepath.Join(cfgHome, "imghost")
@@ -118,8 +120,42 @@ path = "~/.imghost-test-tilde"
 
 func TestLoad_NoRoots(t *testing.T) {
 	writeConfig(t, ``)
-	if _, err := Load(); err == nil {
-		t.Fatal("expected error for zero roots")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Roots) != 1 {
+		t.Fatalf("roots = %+v", cfg.Roots)
+	}
+	r := cfg.Roots[0]
+	if r.Name != "_default" {
+		t.Errorf("name = %q", r.Name)
+	}
+	if r.Access != permission.Public {
+		t.Errorf("access = %v", r.Access)
+	}
+	info, err := os.Stat(r.Path)
+	if err != nil {
+		t.Fatalf("stat default root path: %v", err)
+	}
+	if !info.IsDir() {
+		t.Fatalf("default root path %q is not a directory", r.Path)
+	}
+}
+
+func TestLoad_DefaultNameRejected(t *testing.T) {
+	d := t.TempDir()
+	writeConfig(t, `
+[[root]]
+name = "_default"
+path = "`+d+`"
+`)
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "reserved for default root injection") {
+		t.Fatalf("err = %v", err)
 	}
 }
 
@@ -233,12 +269,26 @@ path = "`+f+`"
 }
 
 func TestLoad_ConfigMissing(t *testing.T) {
-	cfgHome := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", cfgHome)
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	reloadXDG()
-	if _, err := Load(); err == nil {
-		t.Fatal("expected error")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Roots) != 1 || cfg.Roots[0].Name != "_default" {
+		t.Fatalf("roots = %+v", cfg.Roots)
+	}
+	if cfg.Roots[0].Access != permission.Public {
+		t.Errorf("access = %v", cfg.Roots[0].Access)
+	}
+	info, err := os.Stat(cfg.Roots[0].Path)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if !info.IsDir() {
+		t.Fatalf("not a dir: %q", cfg.Roots[0].Path)
 	}
 }
 

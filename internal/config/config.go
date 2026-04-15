@@ -8,14 +8,19 @@ package config
 import (
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 
+	"github.com/adrg/xdg"
 	"github.com/pelletier/go-toml/v2"
 
 	"github.com/1996fanrui/imghost/internal/permission"
 	"github.com/1996fanrui/imghost/internal/reserved"
 )
+
+// defaultRootName is the reserved name used when no [[root]] is configured.
+const defaultRootName = "_default"
 
 // Config is the fully validated runtime configuration.
 type Config struct {
@@ -43,17 +48,22 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("open config %s: %w", path, err)
-	}
-	defer func() { _ = f.Close() }()
-
 	var cfg Config
-	dec := toml.NewDecoder(f)
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&cfg); err != nil {
-		return nil, fmt.Errorf("parse config %s: %w", path, err)
+	f, err := os.Open(path)
+	switch {
+	case err == nil:
+		defer func() { _ = f.Close() }()
+		dec := toml.NewDecoder(f)
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&cfg); err != nil {
+			return nil, fmt.Errorf("parse config %s: %w", path, err)
+		}
+	case errors.Is(err, os.ErrNotExist):
+		// Missing config is not fatal: proceed with zero-value Config and
+		// let applyDefaults + expandAndValidate (which will inject the
+		// default root) produce a runnable configuration.
+	default:
+		return nil, fmt.Errorf("open config %s: %w", path, err)
 	}
 
 	applyDefaults(&cfg)
@@ -100,9 +110,6 @@ func expandAndValidate(cfg *Config) error {
 		cfg.StateDir = expanded
 	}
 
-	if len(cfg.Roots) == 0 {
-		return errors.New("at least one [[root]] is required")
-	}
 	seen := make(map[string]struct{}, len(cfg.Roots))
 	for i := range cfg.Roots {
 		r := &cfg.Roots[i]
@@ -114,6 +121,29 @@ func expandAndValidate(cfg *Config) error {
 		}
 		seen[r.Name] = struct{}{}
 	}
+	if len(cfg.Roots) == 0 {
+		return injectDefaultRoot(cfg)
+	}
+	return nil
+}
+
+// injectDefaultRoot appends a public "_default" root backed by the XDG data
+// directory when the user has not configured any [[root]]. The directory is
+// created on demand so a brand-new install is immediately usable.
+func injectDefaultRoot(cfg *Config) error {
+	path, err := xdg.DataFile("imghost/data")
+	if err != nil {
+		return fmt.Errorf("resolve default root path: %w", err)
+	}
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		return fmt.Errorf("create default root %s: %w", path, err)
+	}
+	log.Printf("config: no [[root]] configured; injecting %s -> %s", defaultRootName, path)
+	cfg.Roots = append(cfg.Roots, Root{
+		Name:   defaultRootName,
+		Path:   path,
+		Access: permission.Public,
+	})
 	return nil
 }
 
@@ -131,6 +161,9 @@ func validateRoot(i int, r *Root) error {
 	}
 	if reserved.IsName(r.Name) {
 		return fmt.Errorf("root[%d] name %q: conflicts with reserved prefix", i, r.Name)
+	}
+	if r.Name == defaultRootName {
+		return fmt.Errorf("root[%d] name %q: reserved for default root injection", i, r.Name)
 	}
 	if r.Access != "" {
 		if _, err := permission.Parse(string(r.Access)); err != nil {
