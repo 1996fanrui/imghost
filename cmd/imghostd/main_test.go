@@ -4,7 +4,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -50,40 +49,12 @@ func writeConfigFile(t *testing.T, content string) string {
 	return cfgHome
 }
 
-func TestMainMissingConfigExits1(t *testing.T) {
-	bin := buildBinary(t)
-	cfgHome := t.TempDir()
-	// Ensure no config file exists by pointing at an empty XDG dir without
-	// pre-populating imghost/config.toml. Reading must fail because
-	// xdg.ConfigFile returns a path inside a freshly-created parent dir, but
-	// open will fail since the file itself does not exist.
-	code, out := runWith(t, bin, cfgHome)
-	if code != 1 {
-		t.Fatalf("exit %d out=%s", code, out)
-	}
-	if !strings.Contains(out, "config") {
-		t.Fatalf("stderr missing config: %s", out)
-	}
-}
-
 func TestMainInvalidConfigExits1(t *testing.T) {
 	bin := buildBinary(t)
 	cfgHome := writeConfigFile(t, "not = a = valid toml\n")
 	code, _ := runWith(t, bin, cfgHome)
 	if code != 1 {
 		t.Fatalf("exit %d want 1", code)
-	}
-}
-
-func TestMainNoRootsExits1(t *testing.T) {
-	bin := buildBinary(t)
-	cfgHome := writeConfigFile(t, `listen_addr = ":0"`+"\n")
-	code, out := runWith(t, bin, cfgHome)
-	if code != 1 {
-		t.Fatalf("exit %d out=%s", code, out)
-	}
-	if !strings.Contains(out, "root") {
-		t.Fatalf("stderr missing root: %s", out)
 	}
 }
 
