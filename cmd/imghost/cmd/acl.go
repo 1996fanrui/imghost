@@ -24,21 +24,26 @@ var aclGetCmd = &cobra.Command{
 	Args:              cobra.ExactArgs(1),
 	PersistentPreRunE: requireConfig,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := configLoader()
+		remote := normalizeRemote(args[0])
+		u := aclURL(mustConfig(), remote)
+		resp, err := httpDo("GET", u, mustConfig().APIKey, nil, "")
 		if err != nil {
-			return err
-		}
-		u := aclURL(cfg, args[0])
-		resp, err := httpDo("GET", u, cfg.APIKey, nil, "")
-		if err != nil {
-			return err
+			return formatCLIError("acl get", remote, err)
 		}
 		defer resp.Body.Close()
-		_, err = io.Copy(cmd.OutOrStdout(), resp.Body)
-		if err == nil {
-			fmt.Fprintln(cmd.OutOrStdout())
+		raw, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return formatCLIError("acl get", remote, err)
 		}
-		return err
+		var body struct {
+			Path   string `json:"path"`
+			Access string `json:"access"`
+		}
+		if err := json.Unmarshal(raw, &body); err != nil || body.Access == "" {
+			return formatCLIError("acl get", remote, fmt.Errorf("unexpected response: %s", string(raw)))
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "%s: %s\n", remote, body.Access)
+		return nil
 	},
 }
 
@@ -48,22 +53,20 @@ var aclSetCmd = &cobra.Command{
 	Args:              cobra.ExactArgs(2),
 	PersistentPreRunE: requireConfig,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := configLoader()
-		if err != nil {
-			return err
-		}
+		remote := normalizeRemote(args[0])
 		access, err := permission.Parse(args[1])
 		if err != nil {
-			return fmt.Errorf("invalid access %q: must be public or private", args[1])
+			return formatCLIError("acl set", remote, fmt.Errorf("invalid access %q: must be public or private", args[1]))
 		}
 		body, _ := json.Marshal(map[string]string{"access": string(access)})
-		u := aclURL(cfg, args[0])
-		resp, err := httpDo("PUT", u, cfg.APIKey, bytes.NewReader(body), "application/json")
+		u := aclURL(mustConfig(), remote)
+		resp, err := httpDo("PUT", u, mustConfig().APIKey, bytes.NewReader(body), "application/json")
 		if err != nil {
-			return err
+			return formatCLIError("acl set", remote, err)
 		}
 		defer resp.Body.Close()
-		fmt.Fprintln(cmd.OutOrStdout(), resp.Status)
+		_, _ = io.Copy(io.Discard, resp.Body)
+		fmt.Fprintf(cmd.OutOrStdout(), "acl set %s = %s\n", remote, access)
 		return nil
 	},
 }
@@ -74,17 +77,15 @@ var aclRmCmd = &cobra.Command{
 	Args:              cobra.ExactArgs(1),
 	PersistentPreRunE: requireConfig,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := configLoader()
+		remote := normalizeRemote(args[0])
+		u := aclURL(mustConfig(), remote)
+		resp, err := httpDo("DELETE", u, mustConfig().APIKey, nil, "")
 		if err != nil {
-			return err
-		}
-		u := aclURL(cfg, args[0])
-		resp, err := httpDo("DELETE", u, cfg.APIKey, nil, "")
-		if err != nil {
-			return err
+			return formatCLIError("acl rm", remote, err)
 		}
 		defer resp.Body.Close()
-		fmt.Fprintln(cmd.OutOrStdout(), resp.Status)
+		_, _ = io.Copy(io.Discard, resp.Body)
+		fmt.Fprintf(cmd.OutOrStdout(), "acl cleared %s\n", remote)
 		return nil
 	},
 }
