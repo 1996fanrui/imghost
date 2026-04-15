@@ -1,0 +1,97 @@
+name: release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  resolve-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      is_prerelease: ${{ steps.resolve.outputs.is_prerelease }}
+    steps:
+      - id: resolve
+        run: |
+          set -e
+          ref="${GITHUB_REF_NAME}"
+          version="${ref#v}"
+          if [[ "${ref}" == *-alpha.* ]]; then
+            is_prerelease=true
+          else
+            is_prerelease=false
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "is_prerelease=${is_prerelease}" >> "$GITHUB_OUTPUT"
+
+  go-binaries:
+    needs: resolve-version
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [linux, darwin, windows]
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build imghost
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          set -e
+          ext=""
+          if [ "${{ matrix.os }}" = "windows" ]; then ext=".exe"; fi
+          out="imghost_${{ matrix.os }}_${{ matrix.arch }}${ext}"
+          go build -ldflags "-X github.com/1996fanrui/imghost/cmd/imghost/cmd.version=${{ needs.resolve-version.outputs.version }}" -o "${out}" ./cmd/imghost
+      - name: Build imghostd
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          set -e
+          ext=""
+          if [ "${{ matrix.os }}" = "windows" ]; then ext=".exe"; fi
+          out="imghostd_${{ matrix.os }}_${{ matrix.arch }}${ext}"
+          go build -o "${out}" ./cmd/imghostd
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          ext=""
+          if [ "${{ matrix.os }}" = "windows" ]; then ext=".exe"; fi
+          suffix="${{ matrix.os }}_${{ matrix.arch }}${ext}"
+          gh release upload "${{ github.event.release.tag_name }}" \
+            "imghost_${suffix}" "imghostd_${suffix}" --clobber
+
+  sha256sums:
+    needs: go-binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download binaries
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          gh release download "${{ github.event.release.tag_name }}" \
+            --pattern 'imghost*' --clobber
+      - name: Compute sha256sums
+        run: |
+          set -e
+          sha256sum imghost_* imghostd_* > SHA256SUMS
+          cat SHA256SUMS
+      - name: Upload SHA256SUMS
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          gh release upload "${{ github.event.release.tag_name }}" \
+            SHA256SUMS --clobber
