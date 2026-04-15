@@ -31,6 +31,9 @@ func main() {
 		fmt.Fprintln(os.Stderr, "config error:", err)
 		os.Exit(1)
 	}
+	if cfg.APIKeyGenerated {
+		log.Printf("config: first-run bootstrap; generated api_key written with 0600 perms")
+	}
 	if cfg.DefaultRootInjected {
 		log.Printf("config: no [[root]] configured; injecting %s -> %s", cfg.Roots[0].Name, cfg.Roots[0].Path)
 	}
