@@ -1,0 +1,243 @@
+basePath: /
+definitions:
+  apierror.Response:
+    properties:
+      error:
+        type: string
+      message:
+        type: string
+    type: object
+  server.aclBody:
+    properties:
+      access:
+        type: string
+    type: object
+info:
+  contact: {}
+  description: Self-hosted file server with per-path ACL.
+  title: imghost API
+  version: "1.0"
+paths:
+  /{path}:
+    delete:
+      parameters:
+      - description: object path (wildcard)
+        in: path
+        name: path
+        required: true
+        type: string
+      - description: Bearer <API_KEY>
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.Response'
+      summary: Delete file
+      tags:
+      - file
+    get:
+      parameters:
+      - description: object path (wildcard)
+        in: path
+        name: path
+        required: true
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: file content
+          schema:
+            type: file
+        "401":
+          description: private file without valid token
+          schema:
+            $ref: '#/definitions/apierror.Response'
+        "403":
+          description: path is a directory or symlink escape
+          schema:
+            $ref: '#/definitions/apierror.Response'
+        "404":
+          description: not found
+          schema:
+            $ref: '#/definitions/apierror.Response'
+      summary: Download file
+      tags:
+      - file
+    put:
+      consumes:
+      - application/octet-stream
+      parameters:
+      - description: object path (wildcard)
+        in: path
+        name: path
+        required: true
+        type: string
+      - description: Bearer <API_KEY>
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: public or private
+        in: header
+        name: X-Access
+        type: string
+      - description: raw file bytes
+        in: body
+        name: body
+        required: true
+        schema:
+          type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: '{\"path\":\"/<path>\"}'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.Response'
+      summary: Upload file
+      tags:
+      - file
+  /{path}/acl:
+    delete:
+      description: Access via /<path>?acl (bare query parameter). Documented here
+        as /{path}/acl for OpenAPI 2.0 tooling compatibility; use the ?acl form in
+        actual requests.
+      parameters:
+      - description: object path (wildcard)
+        in: path
+        name: path
+        required: true
+        type: string
+      - description: must be the bare key 'acl'
+        in: query
+        name: acl
+        required: true
+        type: string
+      - description: Bearer <API_KEY>
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.Response'
+      summary: Delete ACL
+      tags:
+      - acl
+    get:
+      description: Access via /<path>?acl (bare query parameter). Documented here
+        as /{path}/acl for OpenAPI 2.0 tooling compatibility; use the ?acl form in
+        actual requests.
+      parameters:
+      - description: object path (wildcard)
+        in: path
+        name: path
+        required: true
+        type: string
+      - description: must be the bare key 'acl'
+        in: query
+        name: acl
+        required: true
+        type: string
+      - description: Bearer <API_KEY>
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.Response'
+      summary: Get ACL
+      tags:
+      - acl
+    put:
+      consumes:
+      - application/json
+      description: Access via /<path>?acl (bare query parameter). Documented here
+        as /{path}/acl for OpenAPI 2.0 tooling compatibility; use the ?acl form in
+        actual requests.
+      parameters:
+      - description: object path (wildcard)
+        in: path
+        name: path
+        required: true
+        type: string
+      - description: must be the bare key 'acl'
+        in: query
+        name: acl
+        required: true
+        type: string
+      - description: Bearer <API_KEY>
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: access payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/server.aclBody'
+      responses:
+        "200":
+          description: OK
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.Response'
+      summary: Set ACL
+      tags:
+      - acl
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
