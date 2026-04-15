@@ -2,35 +2,21 @@
 
 A minimal self-hosted file hosting server. Declare one or more on-disk roots in `config.toml` and imghost serves them over HTTP with a thin permission layer.
 
-## Deployment
+## Quick install
 
-1. Download or build the `imghostd` binary (pure Go, no CGO):
+Linux / macOS:
 
-   ```bash
-   go build -o imghostd ./cmd/imghostd
-   ```
+```bash
+curl -fsSL https://raw.githubusercontent.com/1996fanrui/imghost/main/install.sh | bash
+```
 
-2. Write `config.toml` to the XDG config path (`~/.config/imghost/config.toml` on Linux):
+Windows (PowerShell):
 
-   ```toml
-   listen_addr    = ":34286"
-   api_key        = "<API_KEY>"
-   default_access = "public"
+```powershell
+iwr https://raw.githubusercontent.com/1996fanrui/imghost/main/install.ps1 -UseBasicParsing | iex
+```
 
-   [[root]]
-   name = "photos"
-   path = "/mnt/nas/photos"
-   ```
-
-   See [`docs/examples/config.toml`](docs/examples/config.toml) and [`docs/configuration.md`](docs/configuration.md) for the full schema.
-
-3. Run the daemon:
-
-   ```bash
-   ./imghostd
-   ```
-
-   The server listens on `http://<host>:34286` and fails fast if any config field is invalid (missing roots, non-directory paths, stale bbolt lock, etc.). API reference at `http://<host>:34286/swagger/index.html`.
+See [`docs/installation.md`](docs/installation.md) for details.
 
 ## Usage
 
@@ -83,4 +69,6 @@ On Linux, `service` subcommands wrap `systemctl --user` and `journalctl --user-u
 - Configuration: [`docs/configuration.md`](docs/configuration.md)
 - Architecture: [`docs/architecture_overview.md`](docs/architecture_overview.md)
 - Permission model: [`docs/permissions.md`](docs/permissions.md)
+- Installation: [`docs/installation.md`](docs/installation.md)
+- Releasing (maintainers): [`docs/releasing.md`](docs/releasing.md)
 - API spec: [`docs/swagger.yaml`](docs/swagger.yaml)
