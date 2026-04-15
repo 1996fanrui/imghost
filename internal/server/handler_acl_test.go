@@ -8,14 +8,15 @@ import (
 	"testing"
 
 	"github.com/1996fanrui/imghost/internal/permission"
+	"github.com/1996fanrui/imghost/internal/storage"
 )
 
 func TestGetAclExplicit(t *testing.T) {
-	env := testServer(t)
-	if err := env.permstore.Put("/a.txt", permission.Private); err != nil {
+	env := newTestServer(t, storage.OSFS{})
+	if err := env.permstore.Put("/testroot/a.txt", permission.Private); err != nil {
 		t.Fatal(err)
 	}
-	resp := doReq(t, "GET", env.ts.URL+"/a.txt?acl", nil, authHdr(env.apiKey))
+	resp := doReq(t, "GET", urlOf(env, "/a.txt?acl"), nil, authHdr(env.apiKey))
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
 		t.Fatalf("status %d", resp.StatusCode)
@@ -24,14 +25,14 @@ func TestGetAclExplicit(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
-	if body["path"] != "/a.txt" || body["access"] != "private" {
+	if body["path"] != "/testroot/a.txt" || body["access"] != "private" {
 		t.Fatalf("body %+v", body)
 	}
 }
 
 func TestGetAclNoRule(t *testing.T) {
-	env := testServer(t)
-	resp := doReq(t, "GET", env.ts.URL+"/a.txt?acl", nil, authHdr(env.apiKey))
+	env := newTestServer(t, storage.OSFS{})
+	resp := doReq(t, "GET", urlOf(env, "/a.txt?acl"), nil, authHdr(env.apiKey))
 	resp.Body.Close()
 	if resp.StatusCode != 404 {
 		t.Fatalf("status %d", resp.StatusCode)
@@ -39,12 +40,11 @@ func TestGetAclNoRule(t *testing.T) {
 }
 
 func TestGetAclNoInheritance(t *testing.T) {
-	env := testServer(t)
-	if err := env.permstore.Put("/dir", permission.Private); err != nil {
+	env := newTestServer(t, storage.OSFS{})
+	if err := env.permstore.Put("/testroot/dir", permission.Private); err != nil {
 		t.Fatal(err)
 	}
-	// /dir/child.txt has no own rule.
-	resp := doReq(t, "GET", env.ts.URL+"/dir/child.txt?acl", nil, authHdr(env.apiKey))
+	resp := doReq(t, "GET", urlOf(env, "/dir/child.txt?acl"), nil, authHdr(env.apiKey))
 	resp.Body.Close()
 	if resp.StatusCode != 404 {
 		t.Fatalf("status %d want 404 (no inheritance)", resp.StatusCode)
@@ -52,8 +52,8 @@ func TestGetAclNoInheritance(t *testing.T) {
 }
 
 func TestPutAclPublic(t *testing.T) {
-	env := testServer(t)
-	resp := doReq(t, "PUT", env.ts.URL+"/a.txt?acl",
+	env := newTestServer(t, storage.OSFS{})
+	resp := doReq(t, "PUT", urlOf(env, "/a.txt?acl"),
 		strings.NewReader(`{"access":"public"}`), authHdr(env.apiKey))
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
@@ -63,29 +63,29 @@ func TestPutAclPublic(t *testing.T) {
 	if len(b) != 0 {
 		t.Fatalf("body not empty: %q", b)
 	}
-	a, ok, _ := env.permstore.Get("/a.txt")
+	a, ok, _ := env.permstore.Get("/testroot/a.txt")
 	if !ok || a != permission.Public {
 		t.Fatalf("store ok=%v a=%v", ok, a)
 	}
 }
 
 func TestPutAclPrivate(t *testing.T) {
-	env := testServer(t)
-	resp := doReq(t, "PUT", env.ts.URL+"/a.txt?acl",
+	env := newTestServer(t, storage.OSFS{})
+	resp := doReq(t, "PUT", urlOf(env, "/a.txt?acl"),
 		strings.NewReader(`{"access":"private"}`), authHdr(env.apiKey))
 	resp.Body.Close()
 	if resp.StatusCode != 200 {
 		t.Fatalf("status %d", resp.StatusCode)
 	}
-	a, _, _ := env.permstore.Get("/a.txt")
+	a, _, _ := env.permstore.Get("/testroot/a.txt")
 	if a != permission.Private {
 		t.Fatalf("got %v", a)
 	}
 }
 
 func TestPutAclInvalid(t *testing.T) {
-	env := testServer(t)
-	resp := doReq(t, "PUT", env.ts.URL+"/a.txt?acl",
+	env := newTestServer(t, storage.OSFS{})
+	resp := doReq(t, "PUT", urlOf(env, "/a.txt?acl"),
 		strings.NewReader(`{"access":"weird"}`), authHdr(env.apiKey))
 	resp.Body.Close()
 	if resp.StatusCode != 400 {
@@ -94,8 +94,8 @@ func TestPutAclInvalid(t *testing.T) {
 }
 
 func TestPutAclBadJSON(t *testing.T) {
-	env := testServer(t)
-	resp := doReq(t, "PUT", env.ts.URL+"/a.txt?acl",
+	env := newTestServer(t, storage.OSFS{})
+	resp := doReq(t, "PUT", urlOf(env, "/a.txt?acl"),
 		strings.NewReader(`not json`), authHdr(env.apiKey))
 	resp.Body.Close()
 	if resp.StatusCode != 400 {
@@ -104,8 +104,8 @@ func TestPutAclBadJSON(t *testing.T) {
 }
 
 func TestPutAclTrailingTokens(t *testing.T) {
-	env := testServer(t)
-	resp := doReq(t, "PUT", env.ts.URL+"/a.txt?acl",
+	env := newTestServer(t, storage.OSFS{})
+	resp := doReq(t, "PUT", urlOf(env, "/a.txt?acl"),
 		strings.NewReader(`{"access":"public"}{"x":1}`), authHdr(env.apiKey))
 	resp.Body.Close()
 	if resp.StatusCode != 400 {
@@ -114,17 +114,16 @@ func TestPutAclTrailingTokens(t *testing.T) {
 }
 
 func TestDeleteAclSuccess(t *testing.T) {
-	env := testServer(t)
-	if err := env.permstore.Put("/a.txt", permission.Public); err != nil {
+	env := newTestServer(t, storage.OSFS{})
+	if err := env.permstore.Put("/testroot/a.txt", permission.Public); err != nil {
 		t.Fatal(err)
 	}
-	resp := doReq(t, "DELETE", env.ts.URL+"/a.txt?acl", nil, authHdr(env.apiKey))
+	resp := doReq(t, "DELETE", urlOf(env, "/a.txt?acl"), nil, authHdr(env.apiKey))
 	resp.Body.Close()
 	if resp.StatusCode != 204 {
 		t.Fatalf("status %d", resp.StatusCode)
 	}
-	// follow-up GET → 404
-	resp = doReq(t, "GET", env.ts.URL+"/a.txt?acl", nil, authHdr(env.apiKey))
+	resp = doReq(t, "GET", urlOf(env, "/a.txt?acl"), nil, authHdr(env.apiKey))
 	resp.Body.Close()
 	if resp.StatusCode != 404 {
 		t.Fatalf("followup status %d", resp.StatusCode)
@@ -132,38 +131,34 @@ func TestDeleteAclSuccess(t *testing.T) {
 }
 
 func TestDeleteAclNotFound(t *testing.T) {
-	env := testServer(t)
-	resp := doReq(t, "DELETE", env.ts.URL+"/a.txt?acl", nil, authHdr(env.apiKey))
+	env := newTestServer(t, storage.OSFS{})
+	resp := doReq(t, "DELETE", urlOf(env, "/a.txt?acl"), nil, authHdr(env.apiKey))
 	resp.Body.Close()
 	if resp.StatusCode != 404 {
 		t.Fatalf("status %d", resp.StatusCode)
 	}
 }
 
-// ---- AT-N53L ----
+// ---- AT-N53L query strictness ----
 
 func TestAclQueryStrict(t *testing.T) {
-	env := testServer(t)
-	// 1) ?acl → ACL handler; no rule yet so 404.
-	resp := doReq(t, "GET", env.ts.URL+"/a.txt?acl", nil, authHdr(env.apiKey))
+	env := newTestServer(t, storage.OSFS{})
+	resp := doReq(t, "GET", urlOf(env, "/a.txt?acl"), nil, authHdr(env.apiKey))
 	resp.Body.Close()
 	if resp.StatusCode != 404 {
 		t.Fatalf("?acl status %d", resp.StatusCode)
 	}
-	// 2) ?acl=x → 400.
-	resp = doReq(t, "GET", env.ts.URL+"/a.txt?acl=x", nil, authHdr(env.apiKey))
+	resp = doReq(t, "GET", urlOf(env, "/a.txt?acl=x"), nil, authHdr(env.apiKey))
 	resp.Body.Close()
 	if resp.StatusCode != 400 {
 		t.Fatalf("?acl=x status %d", resp.StatusCode)
 	}
-	// 3) ?acl&foo=1 → 400.
-	resp = doReq(t, "GET", env.ts.URL+"/a.txt?acl&foo=1", nil, authHdr(env.apiKey))
+	resp = doReq(t, "GET", urlOf(env, "/a.txt?acl&foo=1"), nil, authHdr(env.apiKey))
 	resp.Body.Close()
 	if resp.StatusCode != 400 {
 		t.Fatalf("?acl&foo=1 status %d", resp.StatusCode)
 	}
-	// 4) ?foo=1 → file handler; file doesn't exist → 404.
-	resp = doReq(t, "GET", env.ts.URL+"/a.txt?foo=1", nil, nil)
+	resp = doReq(t, "GET", urlOf(env, "/a.txt?foo=1"), nil, nil)
 	resp.Body.Close()
 	if resp.StatusCode != 404 {
 		t.Fatalf("?foo=1 status %d", resp.StatusCode)
@@ -173,11 +168,11 @@ func TestAclQueryStrict(t *testing.T) {
 // ---- AT-HFBD ----
 
 func TestResponseNoHostACL(t *testing.T) {
-	env := testServer(t)
-	if err := env.permstore.Put("/a.txt", permission.Private); err != nil {
+	env := newTestServer(t, storage.OSFS{})
+	if err := env.permstore.Put("/testroot/a.txt", permission.Private); err != nil {
 		t.Fatal(err)
 	}
-	resp := doReq(t, "GET", env.ts.URL+"/a.txt?acl", nil, authHdr(env.apiKey))
+	resp := doReq(t, "GET", urlOf(env, "/a.txt?acl"), nil, authHdr(env.apiKey))
 	defer resp.Body.Close()
 	var body map[string]string
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
@@ -195,12 +190,12 @@ func TestResponseNoHostACL(t *testing.T) {
 // ---- AT-40IJ ----
 
 func TestAuth401CoverageACL(t *testing.T) {
-	env := testServer(t)
+	env := newTestServer(t, storage.OSFS{})
 	cases := []struct{ method string }{
 		{http.MethodGet}, {http.MethodPut}, {http.MethodDelete},
 	}
 	for _, c := range cases {
-		resp := doReq(t, c.method, env.ts.URL+"/a.txt?acl", strings.NewReader(`{"access":"public"}`), nil)
+		resp := doReq(t, c.method, urlOf(env, "/a.txt?acl"), strings.NewReader(`{"access":"public"}`), nil)
 		resp.Body.Close()
 		if resp.StatusCode != 401 {
 			t.Errorf("%s status %d want 401", c.method, resp.StatusCode)
@@ -208,5 +203,24 @@ func TestAuth401CoverageACL(t *testing.T) {
 		if !strings.Contains(resp.Header.Get("WWW-Authenticate"), "Bearer") {
 			t.Errorf("%s missing WWW-Authenticate", c.method)
 		}
+	}
+}
+
+// ACL key for directory path uses no trailing slash.
+func TestAclKeyShape(t *testing.T) {
+	env := newTestServer(t, storage.OSFS{})
+	// GET /testroot/ → urlKey should be "/testroot" (no trailing slash).
+	if err := env.permstore.Put("/testroot", permission.Private); err != nil {
+		t.Fatal(err)
+	}
+	resp := doReq(t, "GET", env.ts.URL+"/testroot?acl", nil, authHdr(env.apiKey))
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	var body map[string]string
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if body["path"] != "/testroot" {
+		t.Fatalf("path = %q want %q", body["path"], "/testroot")
 	}
 }

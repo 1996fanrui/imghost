@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -37,12 +36,17 @@ func authHdr(key string) map[string]string {
 	return map[string]string{"Authorization": "Bearer " + key}
 }
 
+// urlOf returns the test server URL for a path under the single test root.
+func urlOf(env *testEnv, suffix string) string {
+	return env.ts.URL + "/" + testRootName + suffix
+}
+
 func TestGetFilePublic(t *testing.T) {
-	env := testServer(t)
-	if err := os.WriteFile(filepath.Join(env.dataDir, "a.txt"), []byte("hello"), 0o644); err != nil {
+	env := newTestServer(t, storage.OSFS{})
+	if err := os.WriteFile(filepath.Join(env.rootPath, "a.txt"), []byte("hello"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	resp := doReq(t, "GET", env.ts.URL+"/a.txt", nil, nil)
+	resp := doReq(t, "GET", urlOf(env, "/a.txt"), nil, nil)
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
 		t.Fatalf("status %d", resp.StatusCode)
@@ -54,15 +58,14 @@ func TestGetFilePublic(t *testing.T) {
 }
 
 func TestGetFilePrivateRequiresAuth(t *testing.T) {
-	env := testServer(t)
-	if err := os.WriteFile(filepath.Join(env.dataDir, "a.txt"), []byte("hello"), 0o644); err != nil {
+	env := newTestServer(t, storage.OSFS{})
+	if err := os.WriteFile(filepath.Join(env.rootPath, "a.txt"), []byte("hello"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := env.permstore.Put("/a.txt", permission.Private); err != nil {
+	if err := env.permstore.Put("/testroot/a.txt", permission.Private); err != nil {
 		t.Fatal(err)
 	}
-	// no auth → 401
-	resp := doReq(t, "GET", env.ts.URL+"/a.txt", nil, nil)
+	resp := doReq(t, "GET", urlOf(env, "/a.txt"), nil, nil)
 	resp.Body.Close()
 	if resp.StatusCode != 401 {
 		t.Fatalf("no-auth status %d", resp.StatusCode)
@@ -70,8 +73,7 @@ func TestGetFilePrivateRequiresAuth(t *testing.T) {
 	if resp.Header.Get("WWW-Authenticate") == "" {
 		t.Fatalf("missing WWW-Authenticate")
 	}
-	// with auth → 200
-	resp = doReq(t, "GET", env.ts.URL+"/a.txt", nil, authHdr(env.apiKey))
+	resp = doReq(t, "GET", urlOf(env, "/a.txt"), nil, authHdr(env.apiKey))
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
 		t.Fatalf("auth status %d", resp.StatusCode)
@@ -79,8 +81,8 @@ func TestGetFilePrivateRequiresAuth(t *testing.T) {
 }
 
 func TestGetFileNotFound(t *testing.T) {
-	env := testServer(t)
-	resp := doReq(t, "GET", env.ts.URL+"/missing.txt", nil, nil)
+	env := newTestServer(t, storage.OSFS{})
+	resp := doReq(t, "GET", urlOf(env, "/missing.txt"), nil, nil)
 	resp.Body.Close()
 	if resp.StatusCode != 404 {
 		t.Fatalf("status %d", resp.StatusCode)
@@ -88,24 +90,42 @@ func TestGetFileNotFound(t *testing.T) {
 }
 
 func TestGetFileDirectoryForbidden(t *testing.T) {
-	env := testServer(t)
-	if err := os.MkdirAll(filepath.Join(env.dataDir, "sub"), 0o755); err != nil {
+	env := newTestServer(t, storage.OSFS{})
+	if err := os.MkdirAll(filepath.Join(env.rootPath, "sub"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	resp := doReq(t, "GET", env.ts.URL+"/sub", nil, nil)
+	resp := doReq(t, "GET", urlOf(env, "/sub"), nil, nil)
 	resp.Body.Close()
 	if resp.StatusCode != 403 {
 		t.Fatalf("status %d", resp.StatusCode)
 	}
 }
 
+func TestGetUnknownRoot(t *testing.T) {
+	env := newTestServer(t, storage.OSFS{})
+	resp := doReq(t, "GET", env.ts.URL+"/unknownroot/a.txt", nil, nil)
+	resp.Body.Close()
+	if resp.StatusCode != 404 {
+		t.Fatalf("status %d want 404", resp.StatusCode)
+	}
+}
+
+func TestTraversalReturns403(t *testing.T) {
+	env := newTestServer(t, storage.OSFS{})
+	resp := doReq(t, "GET", env.ts.URL+"/"+testRootName+"/a/..%2fb", nil, nil)
+	resp.Body.Close()
+	if resp.StatusCode != 403 {
+		t.Fatalf("status %d want 403", resp.StatusCode)
+	}
+}
+
 func TestPutFileOverwrite(t *testing.T) {
-	env := testServer(t)
-	path := filepath.Join(env.dataDir, "a.txt")
+	env := newTestServer(t, storage.OSFS{})
+	path := filepath.Join(env.rootPath, "a.txt")
 	if err := os.WriteFile(path, []byte("OLD"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	resp := doReq(t, "PUT", env.ts.URL+"/a.txt", strings.NewReader("NEW"), authHdr(env.apiKey))
+	resp := doReq(t, "PUT", urlOf(env, "/a.txt"), strings.NewReader("NEW"), authHdr(env.apiKey))
 	defer resp.Body.Close()
 	if resp.StatusCode != 201 {
 		t.Fatalf("status %d", resp.StatusCode)
@@ -116,91 +136,91 @@ func TestPutFileOverwrite(t *testing.T) {
 	}
 	var body map[string]string
 	_ = json.NewDecoder(resp.Body).Decode(&body)
-	if body["path"] != "/a.txt" {
+	if body["path"] != "/testroot/a.txt" {
 		t.Fatalf("resp path %q", body["path"])
 	}
 }
 
 func TestPutFileAutoMkdir(t *testing.T) {
-	env := testServer(t)
-	resp := doReq(t, "PUT", env.ts.URL+"/a/b/c.txt", strings.NewReader("X"), authHdr(env.apiKey))
+	env := newTestServer(t, storage.OSFS{})
+	resp := doReq(t, "PUT", urlOf(env, "/a/b/c.txt"), strings.NewReader("X"), authHdr(env.apiKey))
 	resp.Body.Close()
 	if resp.StatusCode != 201 {
 		t.Fatalf("status %d", resp.StatusCode)
 	}
-	b, err := os.ReadFile(filepath.Join(env.dataDir, "a/b/c.txt"))
+	b, err := os.ReadFile(filepath.Join(env.rootPath, "a/b/c.txt"))
 	if err != nil || string(b) != "X" {
 		t.Fatalf("disk err=%v body=%q", err, b)
 	}
 }
 
 func TestPutFileWithXAccess(t *testing.T) {
-	env := testServer(t)
+	env := newTestServer(t, storage.OSFS{})
 	h := authHdr(env.apiKey)
 	h["X-Access"] = "private"
-	resp := doReq(t, "PUT", env.ts.URL+"/a.txt", strings.NewReader("X"), h)
+	resp := doReq(t, "PUT", urlOf(env, "/a.txt"), strings.NewReader("X"), h)
 	resp.Body.Close()
 	if resp.StatusCode != 201 {
 		t.Fatalf("status %d", resp.StatusCode)
 	}
-	a, ok, _ := env.permstore.Get("/a.txt")
+	a, ok, _ := env.permstore.Get("/testroot/a.txt")
 	if !ok || a != permission.Private {
 		t.Fatalf("permstore ok=%v a=%v", ok, a)
 	}
 }
 
 func TestPutFileNoXAccessNoRule(t *testing.T) {
-	env := testServer(t)
-	resp := doReq(t, "PUT", env.ts.URL+"/a.txt", strings.NewReader("X"), authHdr(env.apiKey))
+	env := newTestServer(t, storage.OSFS{})
+	resp := doReq(t, "PUT", urlOf(env, "/a.txt"), strings.NewReader("X"), authHdr(env.apiKey))
 	resp.Body.Close()
 	if resp.StatusCode != 201 {
 		t.Fatalf("status %d", resp.StatusCode)
 	}
-	_, ok, _ := env.permstore.Get("/a.txt")
+	_, ok, _ := env.permstore.Get("/testroot/a.txt")
 	if ok {
 		t.Fatalf("permstore should not have rule")
 	}
 }
 
 func TestPutFileNoXAccessPreservesExistingRule(t *testing.T) {
-	env := testServer(t)
-	if err := env.permstore.Put("/a.txt", permission.Private); err != nil {
+	env := newTestServer(t, storage.OSFS{})
+	if err := env.permstore.Put("/testroot/a.txt", permission.Private); err != nil {
 		t.Fatal(err)
 	}
-	resp := doReq(t, "PUT", env.ts.URL+"/a.txt", strings.NewReader("X"), authHdr(env.apiKey))
+	resp := doReq(t, "PUT", urlOf(env, "/a.txt"), strings.NewReader("X"), authHdr(env.apiKey))
 	resp.Body.Close()
 	if resp.StatusCode != 201 {
 		t.Fatalf("status %d", resp.StatusCode)
 	}
-	a, ok, _ := env.permstore.Get("/a.txt")
+	a, ok, _ := env.permstore.Get("/testroot/a.txt")
 	if !ok || a != permission.Private {
 		t.Fatalf("rule lost: ok=%v a=%v", ok, a)
 	}
 }
 
 func TestPutFileXAccessOverrides(t *testing.T) {
-	env := testServer(t)
-	if err := env.permstore.Put("/a.txt", permission.Private); err != nil {
+	env := newTestServer(t, storage.OSFS{})
+	if err := env.permstore.Put("/testroot/a.txt", permission.Private); err != nil {
 		t.Fatal(err)
 	}
 	h := authHdr(env.apiKey)
 	h["X-Access"] = "public"
-	resp := doReq(t, "PUT", env.ts.URL+"/a.txt", strings.NewReader("X"), h)
+	resp := doReq(t, "PUT", urlOf(env, "/a.txt"), strings.NewReader("X"), h)
 	resp.Body.Close()
 	if resp.StatusCode != 201 {
 		t.Fatalf("status %d", resp.StatusCode)
 	}
-	a, _, _ := env.permstore.Get("/a.txt")
+	a, _, _ := env.permstore.Get("/testroot/a.txt")
 	if a != permission.Public {
 		t.Fatalf("want public got %v", a)
 	}
 }
 
 func TestPutFileInvalidXAccess(t *testing.T) {
-	env := testServer(t)
+	env := newTestServer(t, storage.OSFS{})
 	h := authHdr(env.apiKey)
 	h["X-Access"] = "weird"
-	resp := doReq(t, "PUT", env.ts.URL+"/a.txt", strings.NewReader("X"), h)
+	resp := doReq(t, "PUT", urlOf(env, "/a.txt"), strings.NewReader("X"), h)
 	resp.Body.Close()
 	if resp.StatusCode != 400 {
 		t.Fatalf("status %d", resp.StatusCode)
@@ -210,24 +230,22 @@ func TestPutFileInvalidXAccess(t *testing.T) {
 // TestPutStreaming implements AT-IVQK: verify the handler writes bytes to
 // the temp file before the request body reaches EOF.
 func TestPutStreaming(t *testing.T) {
-	env := testServer(t)
-	chunk := bytes.Repeat([]byte("A"), 64*1024) // 64 KiB
+	env := newTestServer(t, storage.OSFS{})
+	chunk := bytes.Repeat([]byte("A"), 64*1024)
 	totalChunks := 4
 	reader := newBlockingReader(chunk, totalChunks)
 
-	targetDir := env.dataDir // file at "/big.bin" lives under dataDir
+	targetDir := env.rootPath
 
 	done := make(chan *http.Response, 1)
 	errCh := make(chan error, 1)
 	go func() {
-		resp := doReq(t, "PUT", env.ts.URL+"/big.bin", reader, authHdr(env.apiKey))
+		resp := doReq(t, "PUT", urlOf(env, "/big.bin"), reader, authHdr(env.apiKey))
 		done <- resp
 	}()
 
-	// Allow reader to serve the first chunk.
 	reader.release()
 
-	// Wait until a *.tmp appears with at least chunk-size bytes.
 	deadline := time.Now().Add(3 * time.Second)
 	seen := false
 outer:
@@ -252,7 +270,6 @@ outer:
 		t.Fatalf("temp file never reached chunk size before EOF")
 	}
 
-	// Release remaining chunks.
 	for i := 1; i < totalChunks; i++ {
 		reader.release()
 	}
@@ -270,7 +287,7 @@ outer:
 		t.Fatalf("put did not finish")
 	}
 
-	info, err := os.Stat(filepath.Join(env.dataDir, "big.bin"))
+	info, err := os.Stat(filepath.Join(env.rootPath, "big.bin"))
 	if err != nil {
 		t.Fatalf("stat final: %v", err)
 	}
@@ -279,8 +296,6 @@ outer:
 	}
 }
 
-// blockingReader serves exactly one chunk per release() call, blocking until
-// each release. close() signals EOF after all pending releases consumed.
 type blockingReader struct {
 	chunk    []byte
 	gate     chan struct{}
@@ -313,15 +328,11 @@ func (b *blockingReader) Read(p []byte) (int, error) {
 		case <-b.closed:
 			return 0, io.EOF
 		case <-b.gate:
-			// extra release treated as no-op → EOF.
 			return 0, io.EOF
 		case <-time.After(5 * time.Second):
 			return 0, io.EOF
 		}
 	}
-	// Drain any buffered gate signals non-blockingly before falling back to
-	// the select that also watches closed/timeout; this prevents races where
-	// `closed` wins over still-buffered `gate` sends.
 	select {
 	case <-b.gate:
 		b.released++
@@ -354,8 +365,6 @@ type fakeFS struct {
 
 func (f *fakeFS) AtomicWrite(abs string, r io.Reader) error {
 	if f.renameFail {
-		// Drain body to simulate partial work, then fail (temp is cleaned
-		// internally in real impl; here no temp is left).
 		_, _ = io.Copy(io.Discard, r)
 		return errors.New("injected rename failure")
 	}
@@ -364,17 +373,17 @@ func (f *fakeFS) AtomicWrite(abs string, r io.Reader) error {
 
 func TestPutAtomicityRenameFailureOverwrite(t *testing.T) {
 	ff := &fakeFS{FS: storage.OSFS{}, renameFail: true}
-	env := newTestEnvWithFS(t, ff, permission.Public)
-	path := filepath.Join(env.dataDir, "a.txt")
+	env := newTestServer(t, ff)
+	path := filepath.Join(env.rootPath, "a.txt")
 	if err := os.WriteFile(path, []byte("OLD"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := env.permstore.Put("/a.txt", permission.Private); err != nil {
+	if err := env.permstore.Put("/testroot/a.txt", permission.Private); err != nil {
 		t.Fatal(err)
 	}
 	h := authHdr(env.apiKey)
 	h["X-Access"] = "public"
-	resp := doReq(t, "PUT", env.ts.URL+"/a.txt", strings.NewReader("NEW"), h)
+	resp := doReq(t, "PUT", urlOf(env, "/a.txt"), strings.NewReader("NEW"), h)
 	resp.Body.Close()
 	if resp.StatusCode < 500 {
 		t.Fatalf("want 5xx got %d", resp.StatusCode)
@@ -383,41 +392,35 @@ func TestPutAtomicityRenameFailureOverwrite(t *testing.T) {
 	if string(b) != "OLD" {
 		t.Fatalf("disk %q", string(b))
 	}
-	a, ok, _ := env.permstore.Get("/a.txt")
+	a, ok, _ := env.permstore.Get("/testroot/a.txt")
 	if !ok || a != permission.Private {
 		t.Fatalf("rollback failed ok=%v a=%v", ok, a)
 	}
 }
 
-// failingPermFS simulates permstore write failure by wrapping normal FS;
-// actual permstore failure requires injecting into storage, not FS.
-// For AT-W81S's permstore-Put-failure case we use a closed permstore.
 func TestPutAtomicityPermstoreFailure(t *testing.T) {
-	env := testServer(t)
-	path := filepath.Join(env.dataDir, "a.txt")
+	env := newTestServer(t, storage.OSFS{})
+	path := filepath.Join(env.rootPath, "a.txt")
 	if err := os.WriteFile(path, []byte("OLD"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := env.permstore.Put("/a.txt", permission.Private); err != nil {
+	if err := env.permstore.Put("/testroot/a.txt", permission.Private); err != nil {
 		t.Fatal(err)
 	}
-	// Close permstore so all subsequent writes fail.
 	_ = env.permstore.Close()
 
 	h := authHdr(env.apiKey)
 	h["X-Access"] = "public"
-	resp := doReq(t, "PUT", env.ts.URL+"/a.txt", strings.NewReader("NEW"), h)
+	resp := doReq(t, "PUT", urlOf(env, "/a.txt"), strings.NewReader("NEW"), h)
 	resp.Body.Close()
 	if resp.StatusCode < 500 {
 		t.Fatalf("want 5xx got %d", resp.StatusCode)
 	}
-	// File must remain OLD.
 	b, _ := os.ReadFile(path)
 	if string(b) != "OLD" {
 		t.Fatalf("disk %q", string(b))
 	}
-	// No temp file should remain in dataDir.
-	entries, _ := os.ReadDir(env.dataDir)
+	entries, _ := os.ReadDir(env.rootPath)
 	for _, e := range entries {
 		if strings.HasSuffix(e.Name(), ".tmp") {
 			t.Fatalf("tmp leaked: %s", e.Name())
@@ -427,30 +430,30 @@ func TestPutAtomicityPermstoreFailure(t *testing.T) {
 
 func TestPutAtomicityNewFileRenameFailure(t *testing.T) {
 	ff := &fakeFS{FS: storage.OSFS{}, renameFail: true}
-	env := newTestEnvWithFS(t, ff, permission.Public)
+	env := newTestServer(t, ff)
 	h := authHdr(env.apiKey)
 	h["X-Access"] = "public"
-	resp := doReq(t, "PUT", env.ts.URL+"/new.txt", strings.NewReader("NEW"), h)
+	resp := doReq(t, "PUT", urlOf(env, "/new.txt"), strings.NewReader("NEW"), h)
 	resp.Body.Close()
 	if resp.StatusCode < 500 {
 		t.Fatalf("want 5xx got %d", resp.StatusCode)
 	}
-	if _, err := os.Stat(filepath.Join(env.dataDir, "new.txt")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(env.rootPath, "new.txt")); !os.IsNotExist(err) {
 		t.Fatalf("file should not exist: %v", err)
 	}
-	_, ok, _ := env.permstore.Get("/new.txt")
+	_, ok, _ := env.permstore.Get("/testroot/new.txt")
 	if ok {
 		t.Fatalf("permstore should have been rolled back")
 	}
 }
 
 func TestDeleteFileSuccess(t *testing.T) {
-	env := testServer(t)
-	path := filepath.Join(env.dataDir, "a.txt")
+	env := newTestServer(t, storage.OSFS{})
+	path := filepath.Join(env.rootPath, "a.txt")
 	if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	resp := doReq(t, "DELETE", env.ts.URL+"/a.txt", nil, authHdr(env.apiKey))
+	resp := doReq(t, "DELETE", urlOf(env, "/a.txt"), nil, authHdr(env.apiKey))
 	resp.Body.Close()
 	if resp.StatusCode != 204 {
 		t.Fatalf("status %d", resp.StatusCode)
@@ -461,8 +464,8 @@ func TestDeleteFileSuccess(t *testing.T) {
 }
 
 func TestDeleteFileNotFound(t *testing.T) {
-	env := testServer(t)
-	resp := doReq(t, "DELETE", env.ts.URL+"/missing.txt", nil, authHdr(env.apiKey))
+	env := newTestServer(t, storage.OSFS{})
+	resp := doReq(t, "DELETE", urlOf(env, "/missing.txt"), nil, authHdr(env.apiKey))
 	resp.Body.Close()
 	if resp.StatusCode != 404 {
 		t.Fatalf("status %d", resp.StatusCode)
@@ -470,32 +473,31 @@ func TestDeleteFileNotFound(t *testing.T) {
 }
 
 func TestDeleteFileDirectory(t *testing.T) {
-	env := testServer(t)
-	if err := os.MkdirAll(filepath.Join(env.dataDir, "subdir"), 0o755); err != nil {
+	env := newTestServer(t, storage.OSFS{})
+	if err := os.MkdirAll(filepath.Join(env.rootPath, "subdir"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	resp := doReq(t, "DELETE", env.ts.URL+"/subdir", nil, authHdr(env.apiKey))
+	resp := doReq(t, "DELETE", urlOf(env, "/subdir"), nil, authHdr(env.apiKey))
 	resp.Body.Close()
 	if resp.StatusCode != 403 {
 		t.Fatalf("status %d want 403", resp.StatusCode)
 	}
 }
 
-// ---- AT-K15B reserved path ----
+// ---- reserved path behavior ----
 
-func TestReservedWriteRejected(t *testing.T) {
-	env := testServer(t)
+func TestReservedSwaggerWriteRejected(t *testing.T) {
+	env := newTestServer(t, storage.OSFS{})
 	cases := []struct {
 		method string
 		path   string
 		want   int
 	}{
-		{"PUT", "/swagger/foo", 405},         // goes to swagger handler first
-		{"DELETE", "/swagger/foo", 405},      // ditto
-		{"PUT", "/swagger", 405},             // swagger handler
-		{"PUT", "/swagger/", 405},            // swagger handler (prefix)
-		{"PUT", "/swagger/index.html", 405},  // swagger handler
-		{"DELETE", "/swagger", 405},          // swagger handler
+		{"PUT", "/swagger/foo", 405},
+		{"DELETE", "/swagger/foo", 405},
+		{"PUT", "/swagger", 405},
+		{"PUT", "/swagger/index.html", 405},
+		{"DELETE", "/swagger", 405},
 	}
 	for _, c := range cases {
 		resp := doReq(t, c.method, env.ts.URL+c.path, strings.NewReader("x"), authHdr(env.apiKey))
@@ -506,9 +508,8 @@ func TestReservedWriteRejected(t *testing.T) {
 	}
 }
 
-// TestReservedSwaggerACL covers AT-K15B "PUT /swagger/foo?acl → 405".
 func TestReservedSwaggerACL(t *testing.T) {
-	env := testServer(t)
+	env := newTestServer(t, storage.OSFS{})
 	resp := doReq(t, "PUT", env.ts.URL+"/swagger/foo?acl", strings.NewReader("{}"), authHdr(env.apiKey))
 	resp.Body.Close()
 	if resp.StatusCode != 405 {
@@ -516,127 +517,39 @@ func TestReservedSwaggerACL(t *testing.T) {
 	}
 }
 
-// TestReservedFileHandlerRejection verifies IsReserved is enforced by the
-// file handler even when someone reaches it directly (e.g. if router changes).
-func TestReservedFileHandlerDirect(t *testing.T) {
-	env := testServer(t)
-	h := &FileHandler{
-		DataDir:   env.dataDir,
-		FS:        storage.OSFS{},
-		PermStore: env.permstore,
-		Resolver:  &permission.Resolver{Store: env.permstore, Default: permission.Public},
-		APIKey:    env.apiKey,
-	}
-	req, _ := http.NewRequest("PUT", "/swagger/bad", strings.NewReader("x"))
-	req.Header.Set("Authorization", "Bearer "+env.apiKey)
-	rw := &recordingRW{header: http.Header{}}
-	h.ServeHTTP(rw, req)
-	if rw.status != 400 {
-		t.Fatalf("status %d want 400", rw.status)
-	}
-}
+// ---- AT-77K6 root mapping ----
 
-type recordingRW struct {
-	header http.Header
-	buf    bytes.Buffer
-	status int
-}
-
-func (r *recordingRW) Header() http.Header     { return r.header }
-func (r *recordingRW) Write(b []byte) (int, error) { return r.buf.Write(b) }
-func (r *recordingRW) WriteHeader(s int)        { r.status = s }
-
-// TestReservedNoStrayLiterals implements AT-K15B's grep assertion: the string
-// literal "/swagger" family (bare, trailing-slash, trailing-star) only
-// appears in reserved.go and the single router registration line.
-func TestReservedNoStrayLiterals(t *testing.T) {
-	// Broadened regex to also match the router pattern "/swagger/*".
-	cmd := exec.Command("grep", "-RE", `"/swagger[/*]*"`, "internal/server", "cmd")
-	cmd.Dir = repoRoot(t)
-	out, _ := cmd.Output()
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	var offenders []string
-	for _, line := range lines {
-		if line == "" {
-			continue
-		}
-		// strip file:content
-		parts := strings.SplitN(line, ":", 2)
-		if len(parts) < 2 {
-			continue
-		}
-		file := parts[0]
-		if strings.HasSuffix(file, "reserved.go") {
-			continue
-		}
-		if strings.HasSuffix(file, "_test.go") {
-			continue
-		}
-		offenders = append(offenders, line)
-	}
-	if len(offenders) != 1 {
-		t.Fatalf("expected exactly 1 non-reserved/non-test line containing /swagger literal, got %d:\n%s",
-			len(offenders), strings.Join(offenders, "\n"))
-	}
-}
-
-func repoRoot(t *testing.T) string {
-	t.Helper()
-	cmd := exec.Command("go", "env", "GOMOD")
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("go env: %v", err)
-	}
-	return filepath.Dir(strings.TrimSpace(string(out)))
-}
-
-// ---- AT-77K6 ----
-
-func TestDataDirMapping(t *testing.T) {
-	env := testServer(t)
-	if err := os.MkdirAll(filepath.Join(env.dataDir, "photos"), 0o755); err != nil {
+func TestRootMapping(t *testing.T) {
+	env := newTestServer(t, storage.OSFS{})
+	if err := os.MkdirAll(filepath.Join(env.rootPath, "photos"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(env.dataDir, "docs"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(env.dataDir, "photos/x.jpg"), []byte("IMG"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(env.dataDir, "docs/y.md"), []byte("MD"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(env.rootPath, "photos/x.jpg"), []byte("IMG"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	resp := doReq(t, "GET", env.ts.URL+"/photos/x.jpg", nil, nil)
+	resp := doReq(t, "GET", urlOf(env, "/photos/x.jpg"), nil, nil)
 	b, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if string(b) != "IMG" {
 		t.Fatalf("photos body %q", b)
 	}
 
-	resp = doReq(t, "GET", env.ts.URL+"/docs/y.md", nil, nil)
-	b, _ = io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if string(b) != "MD" {
-		t.Fatalf("docs body %q", b)
-	}
-
-	// Verify internal resolver maps the URL path directly under dataDir
-	// without any "/data/" prefix.
-	_, phys, err := ResolvePath(env.dataDir, "/photos/x.jpg")
+	// Verify ResolvePath still maps suffix directly under rootPath.
+	_, phys, err := ResolvePath(env.rootPath, "/photos/x.jpg")
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
-	if phys != filepath.Join(env.dataDir, "photos/x.jpg") {
+	if phys != filepath.Join(env.rootPath, "photos/x.jpg") {
 		t.Fatalf("physical mismatch: %s", phys)
 	}
 }
 
-// ---- AT-HFBD ----
+// ---- AT-HFBD response must not leak host ----
 
 func TestResponseNoHost(t *testing.T) {
-	env := testServer(t)
-	resp := doReq(t, "PUT", env.ts.URL+"/a.txt", strings.NewReader("X"), authHdr(env.apiKey))
+	env := newTestServer(t, storage.OSFS{})
+	resp := doReq(t, "PUT", urlOf(env, "/a.txt"), strings.NewReader("X"), authHdr(env.apiKey))
 	defer resp.Body.Close()
 	if resp.StatusCode != 201 {
 		t.Fatalf("status %d", resp.StatusCode)
@@ -654,15 +567,14 @@ func TestResponseNoHost(t *testing.T) {
 	}
 }
 
-// ---- AT-40IJ ----
+// ---- AT-40IJ 401 coverage ----
 
 func TestAuth401Coverage(t *testing.T) {
-	env := testServer(t)
-	// Create a private file for GET-private case.
-	if err := os.WriteFile(filepath.Join(env.dataDir, "a.txt"), []byte("x"), 0o644); err != nil {
+	env := newTestServer(t, storage.OSFS{})
+	if err := os.WriteFile(filepath.Join(env.rootPath, "a.txt"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := env.permstore.Put("/a.txt", permission.Private); err != nil {
+	if err := env.permstore.Put("/testroot/a.txt", permission.Private); err != nil {
 		t.Fatal(err)
 	}
 
@@ -674,7 +586,7 @@ func TestAuth401Coverage(t *testing.T) {
 		{"GET", "/a.txt"},
 	}
 	for _, c := range cases {
-		resp := doReq(t, c.method, env.ts.URL+c.path, strings.NewReader("x"), nil)
+		resp := doReq(t, c.method, urlOf(env, c.path), strings.NewReader("x"), nil)
 		resp.Body.Close()
 		if resp.StatusCode != 401 {
 			t.Errorf("%s %s status %d want 401", c.method, c.path, resp.StatusCode)

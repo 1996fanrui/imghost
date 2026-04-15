@@ -17,9 +17,9 @@ Rules can be attached at three levels. Each level is just a path stored in the p
 | ----------- | ---------------- | ----------------------------------------------------------------- |
 | File        | `/photos/cat.jpg`| Exactly that file.                                                |
 | Directory   | `/photos`        | Every descendant with no more-specific rule.                      |
-| Global      | `DEFAULT_ACCESS` | Everything with no explicit rule anywhere up the tree.            |
+| Global      | `default_access` | Everything with no explicit rule anywhere up the tree.            |
 
-File and directory rules are created with `PUT /<path>?acl`. The global default comes from the `DEFAULT_ACCESS` environment variable (`public` if unset).
+File and directory rules are created with `PUT /<path>?acl`. The global default comes from the `default_access` field in `config.toml` (`public` if unset).
 
 ## Resolution priority
 
@@ -32,23 +32,23 @@ On every read, imghost resolves the effective access by walking the request path
         → check /photos/trips
         → check /photos
         → check /
-        → fall back to DEFAULT_ACCESS
+        → fall back to default_access
 ```
 
-**Priority, most-specific wins:** file rule > nearer directory rule > farther directory rule > `DEFAULT_ACCESS`.
+**Priority, most-specific wins:** file rule > nearer directory rule > farther directory rule > `default_access`.
 
 ### Example
 
 Given:
 
-- `DEFAULT_ACCESS=public`
+- `default_access=public`
 - Rule on `/docs` → `private`
 - Rule on `/docs/public-notes` → `public`
 - Rule on `/docs/public-notes/draft.md` → `private`
 
 | Request                               | Effective | Why                                      |
 | ------------------------------------- | --------- | ---------------------------------------- |
-| `GET /photos/cat.jpg`                 | public    | no rule up the tree → `DEFAULT_ACCESS`   |
+| `GET /photos/cat.jpg`                 | public    | no rule up the tree → `default_access`   |
 | `GET /docs/report.pdf`                | private   | inherits `/docs`                         |
 | `GET /docs/public-notes/intro.md`     | public    | `/docs/public-notes` overrides `/docs`   |
 | `GET /docs/public-notes/draft.md`     | private   | file rule beats ancestor rules           |

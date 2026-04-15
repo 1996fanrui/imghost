@@ -12,13 +12,14 @@ type Store interface {
 }
 
 type Resolver struct {
-	Store   Store
-	Default Access
+	Store Store
 }
 
 // Resolve walks from path up to "/" returning the first explicit rule,
-// falling back to Default when nothing matches.
-func (r *Resolver) Resolve(path string) (Access, error) {
+// falling back to def when nothing matches. def is supplied per call so
+// the caller can pass a root-scoped effective default (per-root access
+// override) instead of a single global fallback.
+func (r *Resolver) Resolve(path string, def Access) (Access, error) {
 	norm, err := normalize(path)
 	if err != nil {
 		return "", err
@@ -33,7 +34,7 @@ func (r *Resolver) Resolve(path string) (Access, error) {
 			return a, nil
 		}
 		if cur == "/" {
-			return r.Default, nil
+			return def, nil
 		}
 		idx := strings.LastIndex(cur, "/")
 		if idx <= 0 {

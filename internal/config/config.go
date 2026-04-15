@@ -1,92 +1,177 @@
-// Package config loads and validates process configuration from environment.
+// Package config loads, validates, and canonicalizes imghost's TOML config.
+//
+// Source of truth: the single file at xdg.ConfigFile("imghost/config.toml").
+// No env-variable overrides and no --config flag — the daemon and the CLI
+// must read the exact same file.
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
+
+	"github.com/pelletier/go-toml/v2"
 
 	"github.com/1996fanrui/imghost/internal/permission"
+	"github.com/1996fanrui/imghost/internal/reserved"
 )
 
-// DefaultDBPath is the hardcoded bbolt location per REQ-10R9.
-const DefaultDBPath = "/var/lib/imghost/imghost.db"
-
-const reservedDataDir = "/var/lib/imghost"
-
+// Config is the fully validated runtime configuration.
 type Config struct {
-	APIKey        string
-	DefaultAccess permission.Access
-	DataDir       string
-	Port          int
-	DBPath        string
+	ListenAddr    string            `toml:"listen_addr"`
+	APIKey        string            `toml:"api_key"`
+	DefaultAccess permission.Access `toml:"default_access"`
+	StateDir      string            `toml:"state_dir"`
+	Roots         []Root            `toml:"root"`
+
+	// DBPath is derived during Load; it is not a TOML field.
+	DBPath string `toml:"-"`
 }
 
+const (
+	defaultListenAddr    = ":34286"
+	defaultAPIKey        = "change-me"
+	defaultAccessDefault = permission.Public
+)
+
+// Load reads, parses, and validates the TOML config. Any REQ-BO05 failure
+// returns an error without side effects beyond what xdg.ConfigFile /
+// xdg.StateFile may create (see design.md known side effects).
 func Load() (*Config, error) {
-	apiKey := os.Getenv("API_KEY")
-	if apiKey == "" {
-		return nil, fmt.Errorf("API_KEY is required")
-	}
-
-	defAccessStr := os.Getenv("DEFAULT_ACCESS")
-	if defAccessStr == "" {
-		defAccessStr = string(permission.Public)
-	}
-	defAccess, err := permission.Parse(defAccessStr)
+	path, err := configFilePath()
 	if err != nil {
-		return nil, fmt.Errorf("DEFAULT_ACCESS: %w", err)
+		return nil, err
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open config %s: %w", path, err)
+	}
+	defer func() { _ = f.Close() }()
+
+	var cfg Config
+	dec := toml.NewDecoder(f)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&cfg); err != nil {
+		return nil, fmt.Errorf("parse config %s: %w", path, err)
 	}
 
-	dataDir := os.Getenv("DATA_DIR")
-	if dataDir == "" {
-		dataDir = "/data"
-	}
-	if err := validateDataDir(dataDir); err != nil {
+	applyDefaults(&cfg)
+
+	if err := expandAndValidate(&cfg); err != nil {
 		return nil, err
 	}
 
-	port := 34286
-	if v := os.Getenv("PORT"); v != "" {
-		p, err := strconv.Atoi(v)
-		if err != nil {
-			return nil, fmt.Errorf("PORT %q: not a number", v)
-		}
-		if p < 1 || p > 65535 {
-			return nil, fmt.Errorf("PORT %d: must be in range 1..65535", p)
-		}
-		port = p
+	dbPath, err := resolveDBPath(cfg.StateDir)
+	if err != nil {
+		return nil, err
 	}
+	cfg.DBPath = dbPath
 
-	return &Config{
-		APIKey:        apiKey,
-		DefaultAccess: defAccess,
-		DataDir:       dataDir,
-		Port:          port,
-		DBPath:        DefaultDBPath,
-	}, nil
+	return &cfg, nil
 }
 
-func validateDataDir(dir string) error {
-	clean := filepath.Clean(dir)
-	// Reject when DATA_DIR overlaps the hardcoded bbolt directory.
-	if clean == reservedDataDir || strings.HasPrefix(clean, reservedDataDir+string(filepath.Separator)) {
-		return fmt.Errorf("DATA_DIR %q must not equal or be under %s", dir, reservedDataDir)
+func applyDefaults(cfg *Config) {
+	if cfg.ListenAddr == "" {
+		cfg.ListenAddr = defaultListenAddr
 	}
-	info, err := os.Stat(clean)
+	if cfg.APIKey == "" {
+		cfg.APIKey = defaultAPIKey
+	}
+	if cfg.DefaultAccess == "" {
+		cfg.DefaultAccess = defaultAccessDefault
+	}
+}
+
+func expandAndValidate(cfg *Config) error {
+	if _, err := permission.Parse(string(cfg.DefaultAccess)); err != nil {
+		return fmt.Errorf("default_access: %w", err)
+	}
+
+	// state_dir: optional; when set, expand ~ and require absolute.
+	if cfg.StateDir != "" {
+		expanded, err := expandTilde(cfg.StateDir)
+		if err != nil {
+			return fmt.Errorf("state_dir: expand ~: %w", err)
+		}
+		if !filepath.IsAbs(expanded) {
+			return fmt.Errorf("state_dir %q: must be absolute after ~ expansion", cfg.StateDir)
+		}
+		cfg.StateDir = expanded
+	}
+
+	if len(cfg.Roots) == 0 {
+		return errors.New("at least one [[root]] is required")
+	}
+	seen := make(map[string]struct{}, len(cfg.Roots))
+	for i := range cfg.Roots {
+		r := &cfg.Roots[i]
+		if err := validateRoot(i, r); err != nil {
+			return err
+		}
+		if _, dup := seen[r.Name]; dup {
+			return fmt.Errorf("root[%d] name %q: duplicate", i, r.Name)
+		}
+		seen[r.Name] = struct{}{}
+	}
+	return nil
+}
+
+func validateRoot(i int, r *Root) error {
+	if r.Name == "" {
+		return fmt.Errorf("root[%d] name: required", i)
+	}
+	if r.Name == "." || r.Name == ".." {
+		return fmt.Errorf("root[%d] name %q: invalid", i, r.Name)
+	}
+	for _, c := range r.Name {
+		if c == '/' {
+			return fmt.Errorf("root[%d] name %q: must not contain '/'", i, r.Name)
+		}
+	}
+	if reserved.IsName(r.Name) {
+		return fmt.Errorf("root[%d] name %q: conflicts with reserved prefix", i, r.Name)
+	}
+	if r.Access != "" {
+		if _, err := permission.Parse(string(r.Access)); err != nil {
+			return fmt.Errorf("root[%d] access: %w", i, err)
+		}
+	}
+	if r.Path == "" {
+		return fmt.Errorf("root[%d] path: required", i)
+	}
+	expanded, err := expandTilde(r.Path)
 	if err != nil {
-		return fmt.Errorf("DATA_DIR %q: %w", dir, err)
+		return fmt.Errorf("root[%d] path: expand ~: %w", i, err)
+	}
+	if !filepath.IsAbs(expanded) {
+		return fmt.Errorf("root[%d] path %q: must be absolute after ~ expansion", i, r.Path)
+	}
+	info, err := os.Stat(expanded)
+	if err != nil {
+		return fmt.Errorf("root[%d] path %q: %w", i, r.Path, err)
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("DATA_DIR %q is not a directory", dir)
+		return fmt.Errorf("root[%d] path %q: not a directory", i, r.Path)
 	}
-	f, err := os.CreateTemp(clean, ".imghost-write-probe-*")
-	if err != nil {
-		return fmt.Errorf("DATA_DIR %q not writable: %w", dir, err)
-	}
-	name := f.Name()
-	_ = f.Close()
-	_ = os.Remove(name)
+	r.Path = expanded
 	return nil
+}
+
+func resolveDBPath(stateDir string) (string, error) {
+	if stateDir == "" {
+		return defaultStateDBPath()
+	}
+	return filepath.Join(stateDir, StateDBName), nil
+}
+
+// RootByName returns the root registered under name. Names are compared
+// case-sensitively and must match exactly.
+func (c *Config) RootByName(name string) (*Root, bool) {
+	for i := range c.Roots {
+		if c.Roots[i].Name == name {
+			return &c.Roots[i], true
+		}
+	}
+	return nil, false
 }

@@ -19,12 +19,18 @@ type PermStore struct {
 }
 
 // Open opens the bbolt database at path, creating the parent directory and
-// the permissions bucket if needed.
+// the permissions bucket if needed. Equivalent to OpenWithOptions(path, nil).
 func Open(path string) (*PermStore, error) {
+	return OpenWithOptions(path, nil)
+}
+
+// OpenWithOptions behaves like Open but forwards bolt options (e.g. Timeout)
+// so callers can classify a stuck lock as a fail-fast startup error.
+func OpenWithOptions(path string, opts *bolt.Options) (*PermStore, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("create bbolt parent dir: %w", err)
 	}
-	db, err := bolt.Open(path, 0o600, nil)
+	db, err := bolt.Open(path, 0o600, opts)
 	if err != nil {
 		return nil, fmt.Errorf("open bbolt: %w", err)
 	}

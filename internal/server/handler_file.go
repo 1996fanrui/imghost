@@ -2,7 +2,6 @@ package server
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 
 	"github.com/1996fanrui/imghost/internal/apierror"
@@ -10,9 +9,10 @@ import (
 	"github.com/1996fanrui/imghost/internal/storage"
 )
 
-// FileHandler serves GET/PUT/DELETE for user file paths.
+// FileHandler serves GET/PUT/DELETE for user file paths. Resolution of URL to
+// physical path is done by the router; handlers consume the pre-resolved
+// (urlKey, physical) via resolvedContext.
 type FileHandler struct {
-	DataDir   string
 	FS        storage.FS
 	PermStore *storage.PermStore
 	Resolver  *permission.Resolver
@@ -32,19 +32,6 @@ func (h *FileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *FileHandler) resolve(w http.ResponseWriter, r *http.Request) (cleaned, physical string, ok bool) {
-	cleaned, physical, err := ResolvePath(h.DataDir, r.URL.EscapedPath())
-	if err != nil {
-		if errors.Is(err, ErrSymlinkEscape) {
-			apierror.Forbidden(w, "symlink escape")
-			return "", "", false
-		}
-		apierror.BadRequest(w, "invalid path")
-		return "", "", false
-	}
-	return cleaned, physical, true
-}
-
 // Get serves a stored file.
 //
 // @Summary  Download file
@@ -57,11 +44,8 @@ func (h *FileHandler) resolve(w http.ResponseWriter, r *http.Request) (cleaned, 
 // @Failure  404   {object}  apierror.Response  "not found"
 // @Router   /{path} [get]
 func (h *FileHandler) Get(w http.ResponseWriter, r *http.Request) {
-	cleaned, physical, ok := h.resolve(w, r)
-	if !ok {
-		return
-	}
-	info, err := h.FS.Stat(physical)
+	rc := resolvedFrom(r)
+	info, err := h.FS.Stat(rc.physical)
 	if err != nil {
 		apierror.NotFound(w, "not found")
 		return
@@ -70,7 +54,7 @@ func (h *FileHandler) Get(w http.ResponseWriter, r *http.Request) {
 		apierror.Forbidden(w, "directory listing not allowed")
 		return
 	}
-	access, err := h.Resolver.Resolve(cleaned)
+	access, err := h.Resolver.Resolve(rc.urlKey, rc.defaultAccess)
 	if err != nil {
 		apierror.InternalError(w, "resolve access")
 		return
@@ -79,7 +63,7 @@ func (h *FileHandler) Get(w http.ResponseWriter, r *http.Request) {
 		WriteUnauthorized(w)
 		return
 	}
-	f, err := h.FS.Open(physical)
+	f, err := h.FS.Open(rc.physical)
 	if err != nil {
 		apierror.NotFound(w, "not found")
 		return
@@ -107,14 +91,7 @@ func (h *FileHandler) Put(w http.ResponseWriter, r *http.Request) {
 		WriteUnauthorized(w)
 		return
 	}
-	cleaned, physical, ok := h.resolve(w, r)
-	if !ok {
-		return
-	}
-	if IsReserved(cleaned) {
-		apierror.BadRequest(w, "reserved path")
-		return
-	}
+	rc := resolvedFrom(r)
 
 	var newAccess permission.Access
 	hasAccess := false
@@ -128,26 +105,26 @@ func (h *FileHandler) Put(w http.ResponseWriter, r *http.Request) {
 		hasAccess = true
 	}
 
-	oldAccess, oldExists, err := h.PermStore.Get(cleaned)
+	oldAccess, oldExists, err := h.PermStore.Get(rc.urlKey)
 	if err != nil {
 		apierror.InternalError(w, "permstore read")
 		return
 	}
 
 	if hasAccess {
-		if err := h.PermStore.Put(cleaned, newAccess); err != nil {
+		if err := h.PermStore.Put(rc.urlKey, newAccess); err != nil {
 			apierror.InternalError(w, "permstore write")
 			return
 		}
 	}
 
-	if err := h.FS.AtomicWrite(physical, r.Body); err != nil {
+	if err := h.FS.AtomicWrite(rc.physical, r.Body); err != nil {
 		// Rollback permstore.
 		if hasAccess {
 			if oldExists {
-				_ = h.PermStore.Put(cleaned, oldAccess)
+				_ = h.PermStore.Put(rc.urlKey, oldAccess)
 			} else {
-				_ = h.PermStore.Delete(cleaned)
+				_ = h.PermStore.Delete(rc.urlKey)
 			}
 		}
 		apierror.InternalError(w, "write file")
@@ -156,7 +133,7 @@ func (h *FileHandler) Put(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(map[string]string{"path": cleaned})
+	_ = json.NewEncoder(w).Encode(map[string]string{"path": rc.urlKey})
 }
 
 // Delete removes a stored file.
@@ -174,15 +151,8 @@ func (h *FileHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		WriteUnauthorized(w)
 		return
 	}
-	cleaned, physical, ok := h.resolve(w, r)
-	if !ok {
-		return
-	}
-	if IsReserved(cleaned) {
-		apierror.BadRequest(w, "reserved path")
-		return
-	}
-	info, err := h.FS.Stat(physical)
+	rc := resolvedFrom(r)
+	info, err := h.FS.Stat(rc.physical)
 	if err != nil {
 		apierror.NotFound(w, "not found")
 		return
@@ -191,7 +161,7 @@ func (h *FileHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		apierror.Forbidden(w, "is a directory")
 		return
 	}
-	if err := h.FS.Remove(physical); err != nil {
+	if err := h.FS.Remove(rc.physical); err != nil {
 		apierror.InternalError(w, "remove failed")
 		return
 	}

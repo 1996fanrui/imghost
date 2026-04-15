@@ -1,43 +1,42 @@
 # imghost
 
-A minimal self-hosted file hosting server. Drop it in front of any directory, and it instantly serves your files over HTTP with a clean URL.
+A minimal self-hosted file hosting server. Declare one or more on-disk roots in `config.toml` and imghost serves them over HTTP with a thin permission layer.
 
 ## Deployment
 
-Deploy with Docker Compose:
+1. Download or build the `imghostd` binary (pure Go, no CGO):
 
-```bash
-API_KEY=<API_KEY> docker compose up -d --build
-```
+   ```bash
+   go build -o imghostd ./cmd/imghostd
+   ```
 
-The server listens on `http://<host>:34286`. All files served by imghost live under the container's `/data` directory (mapped to `./data` on the host by default). The permission DB is stored under `~/.local/state/imghost/`.
+2. Write `config.toml` to the XDG config path (`~/.config/imghost/config.toml` on Linux):
 
-### Mounting extra host directories
+   ```toml
+   listen_addr    = ":34286"
+   api_key        = "<API_KEY>"
+   default_access = "public"
 
-Edit `docker-compose.yml` and add one line per directory under `volumes:`:
+   [[root]]
+   name = "photos"
+   path = "/mnt/nas/photos"
+   ```
 
-```yaml
-    volumes:
-      - ./data:/data
-      - /mnt/nas/photos:/data/photos
-      - /home/user/docs:/data/docs
-```
+   See [`docs/examples/config.toml`](docs/examples/config.toml) and [`docs/configuration.md`](docs/configuration.md) for the full schema.
 
-Then `docker compose up -d`.
+3. Run the daemon:
 
-### Environment variables
+   ```bash
+   ./imghostd
+   ```
 
-| Variable          | Default      | Description                                             |
-| ----------------- | ------------ | ------------------------------------------------------- |
-| `API_KEY`         | `change-me`  | Bearer token required for write APIs.                   |
-| `DEFAULT_ACCESS`  | `public`     | Default access for new objects: `public` / `private`.   |
-| `PUID` / `PGID`   | `1000`       | uid:gid the server drops to after startup.              |
+   The server listens on `http://<host>:34286` and fails fast if any config field is invalid (missing roots, non-directory paths, stale bbolt lock, etc.). API reference at `http://<host>:34286/swagger/index.html`.
 
 ## Usage
 
-Every URL path maps 1:1 to a file under `/data`. For example, `PUT /photos/cat.jpg` stores the file at `/data/photos/cat.jpg` inside the container.
+Every URL path starts with the root name declared in `config.toml`. For example, given the config above, `PUT /photos/cat.jpg` stores the file at `/mnt/nas/photos/cat.jpg`.
 
-Write operations (`PUT`, `DELETE`) require `Authorization: Bearer <API_KEY>`. Read access depends on the object's ACL (defaults to `DEFAULT_ACCESS`). Use the bare `?acl` query to manage per-object ACL — `public` or `private`. ACL rules apply at file, directory, or global granularity and are resolved most-specific-first; see [`docs/permissions.md`](docs/permissions.md) for the full model.
+Write operations (`PUT`, `DELETE`) require `Authorization: Bearer <api_key>`. Read access depends on the object's ACL (defaults to `default_access`). Use the bare `?acl` query to manage per-object ACL — `public` or `private`. ACL rules apply at file, directory, or global granularity and are resolved most-specific-first; see [`docs/permissions.md`](docs/permissions.md) for the full model.
 
 ```bash
 TOKEN="Authorization: Bearer <API_KEY>"
@@ -59,32 +58,29 @@ curl -X PUT -H "$TOKEN" -H 'Content-Type: application/json' \
 # Inspect ACL
 curl -H "$TOKEN" "$BASE/photos/cat.jpg?acl"
 
-# Delete ACL (falls back to DEFAULT_ACCESS)
+# Delete ACL (falls back to default_access)
 curl -X DELETE -H "$TOKEN" "$BASE/photos/cat.jpg?acl"
 ```
 
-See the full API reference at `http://localhost:34286/swagger/`.
+## CLI
 
-### CLI wrapper
-
-For a friendlier command surface, a bash wrapper is bundled at `scripts/imghost`:
+The `imghost` CLI is a thin helper for managing the local `imghostd` service. It reads the same `config.toml` as the daemon, so `imghost` commands (other than `version`) fail fast when the config is missing or invalid.
 
 ```bash
-export IMGHOST_URL=http://localhost:34286
-export IMGHOST_API_KEY=<API_KEY>
+go build -o imghost ./cmd/imghost
 
-scripts/imghost put /photos/cat.jpg ./cat.jpg
-scripts/imghost get /photos/cat.jpg -o cat.jpg
-scripts/imghost rm  /photos/cat.jpg
-scripts/imghost acl set /photos/cat.jpg private
-scripts/imghost acl get /photos/cat.jpg
-scripts/imghost acl rm  /photos/cat.jpg
+imghost version                     # print version, commit, build date, Go version
+imghost service start               # start the imghostd background service
+imghost service stop                # stop it
+imghost service status              # show status
+imghost service logs                # tail service logs (follow mode)
 ```
 
-Copy or symlink it somewhere on `PATH` (e.g. `/usr/local/bin/imghost`) for global use.
+On Linux, `service` subcommands wrap `systemctl --user` and `journalctl --user-unit imghostd`. On macOS, they wrap `launchctl bootstrap|bootout|print` and `log show`. When the systemd user unit or launchd agent is missing, the CLI prints a platform-specific guidance message and exits non-zero. On Windows the CLI has no native service integration and every `imghost service` subcommand prints a guidance line and exits 0 — run `imghostd` directly or configure a Task Scheduler job.
 
 ## Documentation
 
+- Configuration: [`docs/configuration.md`](docs/configuration.md)
 - Architecture: [`docs/architecture_overview.md`](docs/architecture_overview.md)
 - Permission model: [`docs/permissions.md`](docs/permissions.md)
 - API spec: [`docs/swagger.yaml`](docs/swagger.yaml)

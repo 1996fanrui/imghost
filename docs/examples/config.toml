@@ -1,0 +1,27 @@
+# Example imghost config.
+#
+# Copy this file to:
+#   Linux   $XDG_CONFIG_HOME/imghost/config.toml (default: ~/.config/imghost/config.toml)
+#   macOS   ~/Library/Application Support/imghost/config.toml
+#   Windows %APPDATA%\imghost\config.toml
+#
+# imghost does NOT read this file from the repository; it is only a reference.
+
+listen_addr     = ":34286"
+api_key         = "change-me"
+default_access  = "public"
+# state_dir: leave empty to use the XDG state default. When set, must be an
+# absolute path after `~` expansion. bbolt DB is stored at <state_dir>/imghost.db.
+state_dir       = ""
+
+# At least one [[root]] is required. Each root maps a URL prefix to a physical
+# directory. URL /<root.name>/<sub> resolves to <root.path>/<sub>.
+[[root]]
+name   = "photos"
+path   = "/mnt/nas/photos"
+# Optional; defaults to the top-level default_access when omitted.
+access = "public"
+
+[[root]]
+name = "docs"
+path = "~/Documents/imghost-docs"

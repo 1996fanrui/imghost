@@ -9,27 +9,32 @@ import (
 	"strings"
 )
 
-// ErrTraversal signals the request path attempted directory traversal or
-// resolved outside the data root. Callers map this to HTTP 400.
+// ErrTraversal signals a URL-side traversal attempt (a literal ".." segment
+// after decode, or a decoded path that does not remain anchored at "/").
+// Callers map this to HTTP 403.
 var ErrTraversal = errors.New("path traversal")
 
-// ErrSymlinkEscape signals a symlink resolves to a location outside the data
-// root. Callers map this to HTTP 403.
+// ErrJoinEscape signals that filepath.Join of a root and the cleaned suffix
+// resolves outside the root subtree. Callers map this to HTTP 403.
+var ErrJoinEscape = errors.New("join escape")
+
+// ErrSymlinkEscape signals a symlink resolves outside the root subtree.
+// Callers map this to HTTP 403.
 var ErrSymlinkEscape = errors.New("symlink escape")
 
-// ResolvePath validates and canonicalizes a URL-escaped request path against
-// dataDir. It returns the cleaned URL path (starting with "/") and the
-// corresponding physical filesystem path.
+// ResolvePath validates and canonicalizes a URL-escaped path suffix against a
+// root's physical directory. It returns the cleaned URL suffix (starting with
+// "/") and the corresponding physical filesystem path within the root.
 //
-// The validation follows the exact order mandated by design.md:
-//  1. PathUnescape the raw escaped path.
-//  2. Reject any segment equal to ".." before path.Clean (cleaning would hide it).
+// Validation order:
+//  1. PathUnescape the raw escaped suffix.
+//  2. Reject any segment equal to ".." before path.Clean.
 //  3. path.Clean for canonical URL form.
-//  4. filepath.Join + filepath.Rel to guard against escape via the join step.
+//  4. filepath.Join + filepath.Rel against the root to guard join escape.
 //  5. EvalSymlinks on the existing target (or nearest existing ancestor) to
 //     block symlink-based escape.
-func ResolvePath(dataDir, urlEscapedPath string) (string, string, error) {
-	decoded, err := url.PathUnescape(urlEscapedPath)
+func ResolvePath(rootPath, suffixEscaped string) (string, string, error) {
+	decoded, err := url.PathUnescape(suffixEscaped)
 	if err != nil {
 		return "", "", ErrTraversal
 	}
@@ -45,12 +50,12 @@ func ResolvePath(dataDir, urlEscapedPath string) (string, string, error) {
 		return "", "", ErrTraversal
 	}
 
-	physical := filepath.Join(dataDir, cleaned)
-	if !isWithinRoot(dataDir, physical) {
-		return "", "", ErrTraversal
+	physical := filepath.Join(rootPath, cleaned)
+	if !isWithinRoot(rootPath, physical) {
+		return "", "", ErrJoinEscape
 	}
 
-	if err := checkSymlinkEscape(dataDir, physical); err != nil {
+	if err := checkSymlinkEscape(rootPath, physical); err != nil {
 		return "", "", err
 	}
 
@@ -63,8 +68,8 @@ func isTraversalSegment(seg string) bool {
 
 // checkSymlinkEscape resolves symlinks on the physical target (or its nearest
 // existing ancestor when the target itself does not yet exist, e.g. PUT of a
-// new file) and verifies the result is still inside dataDir.
-func checkSymlinkEscape(dataDir, physical string) error {
+// new file) and verifies the result is still inside rootPath.
+func checkSymlinkEscape(rootPath, physical string) error {
 	probe := physical
 	for {
 		if _, err := os.Lstat(probe); err == nil {
@@ -81,7 +86,7 @@ func checkSymlinkEscape(dataDir, physical string) error {
 	if err != nil {
 		return ErrSymlinkEscape
 	}
-	evaluatedRoot, err := filepath.EvalSymlinks(dataDir)
+	evaluatedRoot, err := filepath.EvalSymlinks(rootPath)
 	if err != nil {
 		return ErrSymlinkEscape
 	}
@@ -92,7 +97,6 @@ func checkSymlinkEscape(dataDir, physical string) error {
 }
 
 // isWithinRoot reports whether target resolves inside root using filepath.Rel.
-// Exported via package-level tests to cover the escape branch.
 func isWithinRoot(root, target string) bool {
 	rel, err := filepath.Rel(root, target)
 	if err != nil {
