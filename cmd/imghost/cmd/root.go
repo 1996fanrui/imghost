@@ -27,6 +27,11 @@ var configLoader = func() (*config.Config, error) {
 	return config.Load()
 }
 
+// cachedConfig holds the config loaded once per CLI invocation via
+// requireConfig, so HTTP subcommands do not re-read (and re-validate) the
+// TOML file on every RunE call.
+var cachedConfig *config.Config
+
 var rootCmd = &cobra.Command{
 	Use:           "imghost",
 	Short:         "imghost CLI",
@@ -56,8 +61,16 @@ func Execute() error {
 // caller can exit non-zero. It is used as a PersistentPreRunE on every
 // non-version subcommand to guarantee CLI and daemon see the same config.
 func requireConfig(_ *cobra.Command, _ []string) error {
-	if _, err := configLoader(); err != nil {
+	cfg, err := configLoader()
+	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
+	cachedConfig = cfg
 	return nil
+}
+
+// mustConfig returns the config loaded by requireConfig. HTTP subcommands
+// should call this from their RunE to avoid re-loading the TOML file.
+func mustConfig() *config.Config {
+	return cachedConfig
 }
