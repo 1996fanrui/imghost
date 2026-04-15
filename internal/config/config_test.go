@@ -29,6 +29,11 @@ func writeConfig(t *testing.T, toml string) string {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	// Inject a default api_key when the TOML body omits one; most tests
+	// are focused on other fields and should not have to spell it out.
+	if !strings.Contains(toml, "api_key") {
+		toml = "api_key = \"test-key\"\n" + toml
+	}
 	p := filepath.Join(dir, "config.toml")
 	if err := os.WriteFile(p, []byte(toml), 0o644); err != nil {
 		t.Fatal(err)
@@ -47,10 +52,10 @@ path = "`+rootDir+`"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.ListenAddr != ":34286" {
+	if cfg.ListenAddr != "127.0.0.1:34286" {
 		t.Errorf("listen_addr = %q", cfg.ListenAddr)
 	}
-	if cfg.APIKey != "change-me" {
+	if cfg.APIKey != "test-key" {
 		t.Errorf("api_key = %q", cfg.APIKey)
 	}
 	if cfg.DefaultAccess != permission.Public {
@@ -269,13 +274,32 @@ path = "`+f+`"
 }
 
 func TestLoad_ConfigMissing(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfgHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", cfgHome)
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	reloadXDG()
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !cfg.APIKeyGenerated {
+		t.Fatal("APIKeyGenerated = false, want true on first run")
+	}
+	if cfg.APIKey == "" {
+		t.Fatal("generated api_key is empty")
+	}
+	if cfg.ListenAddr != "127.0.0.1:34286" {
+		t.Errorf("listen_addr = %q, want loopback", cfg.ListenAddr)
+	}
+	// Bootstrap config must be persisted with 0600 perms.
+	cfgPath := filepath.Join(cfgHome, "imghost", "config.toml")
+	st, err := os.Stat(cfgPath)
+	if err != nil {
+		t.Fatalf("stat bootstrap config: %v", err)
+	}
+	if perm := st.Mode().Perm(); perm != 0o600 {
+		t.Errorf("bootstrap config perm = %#o, want 0600", perm)
 	}
 	if len(cfg.Roots) != 1 || cfg.Roots[0].Name != "_default" {
 		t.Fatalf("roots = %+v", cfg.Roots)
@@ -289,6 +313,42 @@ func TestLoad_ConfigMissing(t *testing.T) {
 	}
 	if !info.IsDir() {
 		t.Fatalf("not a dir: %q", cfg.Roots[0].Path)
+	}
+}
+
+func TestLoad_ConfigMissing_GeneratesUniquePerHost(t *testing.T) {
+	loadFresh := func() string {
+		t.Helper()
+		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+		t.Setenv("XDG_STATE_HOME", t.TempDir())
+		t.Setenv("XDG_DATA_HOME", t.TempDir())
+		reloadXDG()
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		return cfg.APIKey
+	}
+	a, b := loadFresh(), loadFresh()
+	if a == b {
+		t.Fatalf("two fresh bootstraps produced the same api_key %q", a)
+	}
+}
+
+func TestLoad_EmptyAPIKeyRejected(t *testing.T) {
+	d := t.TempDir()
+	writeConfig(t, `
+api_key = ""
+[[root]]
+name = "photos"
+path = "`+d+`"
+`)
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error for empty api_key")
+	}
+	if !strings.Contains(err.Error(), "api_key must be set") {
+		t.Fatalf("err = %v", err)
 	}
 }
 
@@ -360,6 +420,7 @@ func TestLoad_XDGStateDefault(t *testing.T) {
 	dir := filepath.Join(cfgHome, "imghost")
 	_ = os.MkdirAll(dir, 0o755)
 	_ = os.WriteFile(filepath.Join(dir, "config.toml"), []byte(`
+api_key = "test-key"
 [[root]]
 name = "a"
 path = "`+d+`"

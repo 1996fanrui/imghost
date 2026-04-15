@@ -7,15 +7,19 @@
 #
 # imghost does NOT read this file from the repository; it is only a reference.
 
-listen_addr     = ":34286"
-api_key         = "change-me"
+# On first run (when this file is absent) imghostd auto-generates a random
+# api_key and writes a minimal config.toml with 0600 permissions. Copy this
+# example only if you want to customize fields beyond the generated defaults.
+listen_addr     = "127.0.0.1:34286"
+api_key         = "REPLACE_WITH_RANDOM_TOKEN"
 default_access  = "public"
 # state_dir: leave empty to use the XDG state default. When set, must be an
 # absolute path after `~` expansion. bbolt DB is stored at <state_dir>/imghost.db.
 state_dir       = ""
 
-# At least one [[root]] is required. Each root maps a URL prefix to a physical
-# directory. URL /<root.name>/<sub> resolves to <root.path>/<sub>.
+# [[root]] is optional: when omitted the daemon injects a public `_default`
+# root at the XDG data directory. Declare explicit roots to map URL prefixes
+# to physical directories. URL /<root.name>/<sub> resolves to <root.path>/<sub>.
 [[root]]
 name   = "photos"
 path   = "/mnt/nas/photos"

@@ -6,6 +6,8 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -36,17 +38,26 @@ type Config struct {
 	// `_default` root because the user configured no [[root]]. The daemon
 	// logs this once at startup; the CLI stays silent.
 	DefaultRootInjected bool `toml:"-"`
+
+	// APIKeyGenerated is true when Load generated a fresh api_key during
+	// first-run config bootstrap. The daemon logs a one-time notice at
+	// startup; the CLI stays silent.
+	APIKeyGenerated bool `toml:"-"`
 }
 
 const (
-	defaultListenAddr    = ":34286"
-	defaultAPIKey        = "change-me"
+	defaultListenAddr    = "127.0.0.1:34286"
 	defaultAccessDefault = permission.Public
+
+	// apiKeyRandBytes is the size of the raw entropy used for the generated
+	// api_key. 32 bytes = 256 bits, rendered as 43 base64url characters.
+	apiKeyRandBytes = 32
 )
 
-// Load reads, parses, and validates the TOML config. Any REQ-BO05 failure
-// returns an error without side effects beyond what xdg.ConfigFile /
-// xdg.StateFile may create (see design.md known side effects).
+// Load reads, parses, and validates the TOML config. It may create
+// directories and files on first run: xdg.ConfigFile / xdg.StateFile may
+// create parent directories, and when the config file is absent Load
+// writes a freshly generated minimal config.toml with 0600 permissions.
 func Load() (*Config, error) {
 	path, err := configFilePath()
 	if err != nil {
@@ -63,11 +74,26 @@ func Load() (*Config, error) {
 			return nil, fmt.Errorf("parse config %s: %w", path, err)
 		}
 	case errors.Is(err, os.ErrNotExist):
-		// Missing config is not fatal: proceed with zero-value Config and
-		// let applyDefaults + expandAndValidate (which will inject the
-		// default root) produce a runnable configuration.
+		// First run: materialize a minimal config with a freshly generated
+		// api_key so the default install has a per-host shared secret
+		// instead of a well-known one. Subsequent Load calls read the file
+		// like any other run.
+		key, genErr := generateAPIKey()
+		if genErr != nil {
+			return nil, fmt.Errorf("generate api_key: %w", genErr)
+		}
+		if err := writeBootstrapConfig(path, key); err != nil {
+			return nil, err
+		}
+		cfg.ListenAddr = defaultListenAddr
+		cfg.APIKey = key
+		cfg.APIKeyGenerated = true
 	default:
 		return nil, fmt.Errorf("open config %s: %w", path, err)
+	}
+
+	if !cfg.APIKeyGenerated && cfg.APIKey == "" {
+		return nil, fmt.Errorf("config %s: api_key must be set (remove the file to regenerate)", path)
 	}
 
 	applyDefaults(&cfg)
@@ -88,9 +114,6 @@ func Load() (*Config, error) {
 func applyDefaults(cfg *Config) {
 	if cfg.ListenAddr == "" {
 		cfg.ListenAddr = defaultListenAddr
-	}
-	if cfg.APIKey == "" {
-		cfg.APIKey = defaultAPIKey
 	}
 	if cfg.DefaultAccess == "" {
 		cfg.DefaultAccess = defaultAccessDefault
@@ -200,6 +223,48 @@ func resolveDBPath(stateDir string) (string, error) {
 		return defaultStateDBPath()
 	}
 	return filepath.Join(stateDir, StateDBName), nil
+}
+
+// generateAPIKey returns a base64url-encoded random token backed by
+// crypto/rand. The padding is stripped so the value is a clean bearer token.
+func generateAPIKey() (string, error) {
+	buf := make([]byte, apiKeyRandBytes)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(buf), nil
+}
+
+// writeBootstrapConfig atomically writes a minimal config.toml with
+// 0600 permissions on first run. The parent directory is created by
+// xdg.ConfigFile before this is called.
+func writeBootstrapConfig(path, apiKey string) error {
+	contents := fmt.Sprintf("listen_addr = %q\napi_key = %q\n", defaultListenAddr, apiKey)
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".config.toml.*")
+	if err != nil {
+		return fmt.Errorf("create bootstrap config: %w", err)
+	}
+	tmpName := tmp.Name()
+	cleanup := func() { _ = os.Remove(tmpName) }
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		cleanup()
+		return fmt.Errorf("chmod bootstrap config: %w", err)
+	}
+	if _, err := tmp.WriteString(contents); err != nil {
+		_ = tmp.Close()
+		cleanup()
+		return fmt.Errorf("write bootstrap config: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		cleanup()
+		return fmt.Errorf("close bootstrap config: %w", err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		cleanup()
+		return fmt.Errorf("install bootstrap config %s: %w", path, err)
+	}
+	return nil
 }
 
 // RootByName returns the root registered under name. Names are compared

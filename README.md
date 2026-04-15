@@ -24,6 +24,8 @@ Every URL path starts with the root name declared in `config.toml`. For example,
 
 Write operations (`PUT`, `DELETE`) require `Authorization: Bearer <api_key>`. Read access depends on the object's ACL (defaults to `default_access`). Use the bare `?acl` query to manage per-object ACL — `public` or `private`. ACL rules apply at file, directory, or global granularity and are resolved most-specific-first; see [`docs/permissions.md`](docs/permissions.md) for the full model.
 
+On first run, `imghostd` auto-generates a random `api_key` and writes it (0600) to the XDG config path (`~/.config/imghost/config.toml` on Linux; see [`docs/configuration.md`](docs/configuration.md) for macOS and Windows). Use that value as `<API_KEY>` below; the daemon listens on `127.0.0.1:34286` by default, so hit it from the same host.
+
 ```bash
 TOKEN="Authorization: Bearer <API_KEY>"
 BASE=http://localhost:34286
@@ -50,7 +52,7 @@ curl -X DELETE -H "$TOKEN" "$BASE/photos/cat.jpg?acl"
 
 ## CLI
 
-The `imghost` CLI is a thin helper for managing the local `imghostd` service. It reads the same `config.toml` as the daemon, so `imghost` commands (other than `version`) fail fast when the config is missing or invalid.
+The `imghost` CLI is a thin helper for managing the local `imghostd` service. It reads the same `config.toml` as the daemon (and bootstraps one on first run just like `imghostd`), so `imghost` commands (other than `version`) fail fast when the config is unreadable or invalid.
 
 ```bash
 go build -o imghost ./cmd/imghost
