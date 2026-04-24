@@ -1,6 +1,6 @@
 # Permission Model
 
-imghost protects reads with a simple, hierarchical ACL. Writes (`PUT`, `DELETE`) always require `Authorization: Bearer <API_KEY>`; this document covers **read** access only.
+filehub protects reads with a simple, hierarchical ACL. Writes (`PUT`, `DELETE`) always require `Authorization: Bearer <API_KEY>`; this document covers **read** access only.
 
 ## Access values
 
@@ -23,7 +23,7 @@ File and directory rules are created with `PUT /<path>?acl`. The global default 
 
 ## Resolution priority
 
-On every read, imghost resolves the effective access by walking the request path **from the leaf upward**, returning the first explicit rule it finds, and falling back to the global default if none exists.
+On every read, filehub resolves the effective access by walking the request path **from the leaf upward**, returning the first explicit rule it finds, and falling back to the global default if none exists.
 
 ```
 /photos/trips/paris/eiffel.jpg

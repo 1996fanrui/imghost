@@ -17,7 +17,7 @@ var systemctlUnitMissingExits = map[int]bool{4: true, 5: true}
 
 func init() {
 	adapter = linuxAdapter{}
-	NotInstalledMessage = "imghost systemd --user unit is not installed. See the CLI docs for how to install it."
+	NotInstalledMessage = "filehub systemd --user unit is not installed. See the CLI docs for how to install it."
 }
 
 type linuxAdapter struct{}
@@ -42,7 +42,7 @@ func (linuxAdapter) run(op serviceOp, stdout, stderr io.Writer) error {
 	return nil
 }
 
-// isLinuxUnitInstalled reports whether the imghostd systemd --user unit file
+// isLinuxUnitInstalled reports whether the filehubd systemd --user unit file
 // exists on this host. It uses "systemctl --user cat" which exits non-zero
 // when the unit is not found.
 func isLinuxUnitInstalled() bool {

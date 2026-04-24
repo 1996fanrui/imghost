@@ -1,5 +1,5 @@
 // Package reserved is the single source of truth for first-segment names
-// that the imghost router owns and that must not be used as a [[root]] name.
+// that the filehub router owns and that must not be used as a [[root]] name.
 //
 // Keeping this list in its own leaf package avoids the import cycle that
 // would occur if both internal/config and internal/server tried to own it.

@@ -1,20 +1,20 @@
-# Example imghost config.
+# Example filehub config.
 #
 # Copy this file to:
-#   Linux   $XDG_CONFIG_HOME/imghost/config.toml (default: ~/.config/imghost/config.toml)
-#   macOS   ~/Library/Application Support/imghost/config.toml
-#   Windows %APPDATA%\imghost\config.toml
+#   Linux   $XDG_CONFIG_HOME/filehub/config.toml (default: ~/.config/filehub/config.toml)
+#   macOS   ~/Library/Application Support/filehub/config.toml
+#   Windows %APPDATA%\filehub\config.toml
 #
-# imghost does NOT read this file from the repository; it is only a reference.
+# filehub does NOT read this file from the repository; it is only a reference.
 
-# On first run (when this file is absent) imghostd auto-generates a random
+# On first run (when this file is absent) filehubd auto-generates a random
 # api_key and writes a minimal config.toml with 0600 permissions. Copy this
 # example only if you want to customize fields beyond the generated defaults.
 listen_addr     = "127.0.0.1:34286"
 api_key         = "REPLACE_WITH_RANDOM_TOKEN"
 default_access  = "public"
 # state_dir: leave empty to use the XDG state default. When set, must be an
-# absolute path after `~` expansion. bbolt DB is stored at <state_dir>/imghost.db.
+# absolute path after `~` expansion. bbolt DB is stored at <state_dir>/filehub.db.
 state_dir       = ""
 
 # [[root]] is optional: when omitted the daemon injects a public `_default`
@@ -28,4 +28,4 @@ access = "public"
 
 [[root]]
 name = "docs"
-path = "~/Documents/imghost-docs"
+path = "~/Documents/filehub-docs"

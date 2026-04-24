@@ -9,7 +9,7 @@ import (
 
 	bolt "go.etcd.io/bbolt"
 
-	"github.com/1996fanrui/imghost/internal/permission"
+	"github.com/1996fanrui/filehub/internal/permission"
 )
 
 var bucketName = []byte("permissions")

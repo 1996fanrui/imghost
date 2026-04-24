@@ -1,13 +1,13 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    One-line installer for imghost on Windows.
+    One-line installer for filehub on Windows.
 
 .DESCRIPTION
-    Downloads the imghost CLI and imghostd daemon binaries from GitHub
-    Releases into %LOCALAPPDATA%\Programs\imghost and adds that directory to
+    Downloads the filehub CLI and filehubd daemon binaries from GitHub
+    Releases into %LOCALAPPDATA%\Programs\filehub and adds that directory to
     the user PATH. No Windows service is registered; see the printed guidance
-    for running imghostd under Task Scheduler.
+    for running filehubd under Task Scheduler.
 
 .PARAMETER Version
     Explicit version tag to install, e.g. v0.1.0 or v0.1.0-alpha.1. When set,
@@ -19,7 +19,7 @@
     release.
 
 .EXAMPLE
-    iwr https://raw.githubusercontent.com/1996fanrui/imghost/main/install.ps1 -UseBasicParsing | iex
+    iwr https://raw.githubusercontent.com/1996fanrui/filehub/main/install.ps1 -UseBasicParsing | iex
 #>
 [CmdletBinding()]
 param(
@@ -29,8 +29,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$Repo = '1996fanrui/imghost'
-$InstallDir = Join-Path $env:LOCALAPPDATA 'Programs\imghost'
+$Repo = '1996fanrui/filehub'
+$InstallDir = Join-Path $env:LOCALAPPDATA 'Programs\filehub'
 
 # Detect host architecture. PROCESSOR_ARCHITEW6432 is set when the current
 # process runs under WoW64 (e.g. 32-bit PowerShell on 64-bit Windows, or x64
@@ -44,7 +44,7 @@ switch ($rawArch) {
 }
 
 # Resolve the release tag via the GitHub REST API.
-$headers = @{ 'User-Agent' = 'imghost-installer' }
+$headers = @{ 'User-Agent' = 'filehub-installer' }
 if ($Version) {
     $tag = $Version
     Write-Host "Using explicit version: $tag"
@@ -68,13 +68,13 @@ if (-not (Test-Path -LiteralPath $InstallDir)) {
     New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
 }
 
-$cliAsset = "imghost_windows_${arch}.exe"
-$daemonAsset = "imghostd_windows_${arch}.exe"
+$cliAsset = "filehub_windows_${arch}.exe"
+$daemonAsset = "filehubd_windows_${arch}.exe"
 $cliUrl = "https://github.com/$Repo/releases/download/$tag/$cliAsset"
 $daemonUrl = "https://github.com/$Repo/releases/download/$tag/$daemonAsset"
 
-$cliPath = Join-Path $InstallDir 'imghost.exe'
-$daemonPath = Join-Path $InstallDir 'imghostd.exe'
+$cliPath = Join-Path $InstallDir 'filehub.exe'
+$daemonPath = Join-Path $InstallDir 'filehubd.exe'
 
 Write-Host "Downloading $cliAsset"
 Invoke-WebRequest -UseBasicParsing -Headers $headers -Uri $cliUrl -OutFile $cliPath
@@ -100,13 +100,13 @@ if ($pathEntries -notcontains $InstallDir) {
 $displayVersion = if ($tag.StartsWith('v')) { $tag.Substring(1) } else { $tag }
 
 Write-Host ""
-Write-Host "Installation complete. imghost $displayVersion is ready."
+Write-Host "Installation complete. filehub $displayVersion is ready."
 Write-Host "  CLI    : $cliPath"
 Write-Host "  daemon : $daemonPath"
 Write-Host ""
 Write-Host "PATH updated (user scope). Open a new PowerShell session for it to take effect."
 Write-Host ""
 Write-Host "Next steps:"
-Write-Host "  - Run 'imghostd.exe' directly, OR"
+Write-Host "  - Run 'filehubd.exe' directly, OR"
 Write-Host "  - Configure Windows Task Scheduler for background execution."
 Write-Host "  - Swagger UI: http://localhost:34286/swagger/index.html"

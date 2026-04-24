@@ -4,12 +4,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/1996fanrui/imghost/internal/permission"
+	"github.com/1996fanrui/filehub/internal/permission"
 )
 
 func openTemp(t *testing.T) *PermStore {
 	t.Helper()
-	s, err := Open(filepath.Join(t.TempDir(), "sub", "imghost.db"))
+	s, err := Open(filepath.Join(t.TempDir(), "sub", "filehub.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

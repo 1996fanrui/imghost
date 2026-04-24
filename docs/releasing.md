@@ -1,11 +1,11 @@
-# Releasing imghost
+# Releasing filehub
 
-Maintainer-facing runbook for cutting imghost releases. End-user install
+Maintainer-facing runbook for cutting filehub releases. End-user install
 instructions live in [`installation.md`](installation.md).
 
 ## Channel semantics
 
-imghost ships on two release channels:
+filehub ships on two release channels:
 
 - **alpha** — prerelease. Created by `scripts/release.sh alpha`. The resulting
   GitHub Release is flagged as a prerelease (`gh release create --prerelease`)
@@ -45,7 +45,7 @@ For each published release it:
 
 1. Resolves the version from the tag name.
 2. Runs a `3 OS × 2 arch` build matrix (linux/darwin/windows × amd64/arm64)
-   against both `cmd/imghost` and `cmd/imghostd`, producing **12 binaries**.
+   against both `cmd/filehub` and `cmd/filehubd`, producing **12 binaries**.
 3. Computes `SHA256SUMS` across all artifacts.
 4. Uploads the 12 binaries plus `SHA256SUMS` as release assets via
    `gh release upload`.

@@ -367,7 +367,7 @@ var SwaggerInfo = &swag.Spec{
 	Host:             "",
 	BasePath:         "/",
 	Schemes:          []string{},
-	Title:            "imghost API",
+	Title:            "filehub API",
 	Description:      "Self-hosted file server with per-path ACL.",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,

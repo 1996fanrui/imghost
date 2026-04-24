@@ -9,7 +9,7 @@ import (
 
 func buildBinary(t *testing.T) string {
 	t.Helper()
-	bin := filepath.Join(t.TempDir(), "imghostd")
+	bin := filepath.Join(t.TempDir(), "filehubd")
 	cmd := exec.Command("go", "build", "-o", bin, ".")
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -39,7 +39,7 @@ func runWith(t *testing.T, bin, cfgHome string, extraArgs ...string) (int, strin
 func writeConfigFile(t *testing.T, content string) string {
 	t.Helper()
 	cfgHome := t.TempDir()
-	dir := filepath.Join(cfgHome, "imghost")
+	dir := filepath.Join(cfgHome, "filehub")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}

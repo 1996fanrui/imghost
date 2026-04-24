@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/1996fanrui/imghost/internal/apierror"
-	"github.com/1996fanrui/imghost/internal/permission"
-	"github.com/1996fanrui/imghost/internal/storage"
+	"github.com/1996fanrui/filehub/internal/apierror"
+	"github.com/1996fanrui/filehub/internal/permission"
+	"github.com/1996fanrui/filehub/internal/storage"
 )
 
 // ACLHandler serves GET/PUT/DELETE /<root>/<path>?acl. Resolution is done by

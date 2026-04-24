@@ -1,4 +1,4 @@
-// Package cmd implements the imghost CLI commands.
+// Package cmd implements the filehub CLI commands.
 package cmd
 
 import (
@@ -6,13 +6,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/1996fanrui/imghost/internal/config"
+	"github.com/1996fanrui/filehub/internal/config"
 )
 
 // UnitName is the systemd user unit / launchd label base shared across
 // platform adapters. Kept as a single constant so the CLI never hard-codes
 // the daemon name in multiple places.
-const UnitName = "imghostd"
+const UnitName = "filehubd"
 
 // NotInstalledMessage is the platform-specific guidance printed when the
 // service unit / agent is not installed. REQ-46FE fixes the exact wording
@@ -33,9 +33,9 @@ var configLoader = func() (*config.Config, error) {
 var cachedConfig *config.Config
 
 var rootCmd = &cobra.Command{
-	Use:           "imghost",
-	Short:         "imghost CLI",
-	Long:          "imghost is the user-facing CLI for the imghostd daemon.",
+	Use:           "filehub",
+	Short:         "filehub CLI",
+	Long:          "filehub is the user-facing CLI for the filehubd daemon.",
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	CompletionOptions: cobra.CompletionOptions{

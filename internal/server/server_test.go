@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/1996fanrui/imghost/internal/config"
-	"github.com/1996fanrui/imghost/internal/permission"
-	"github.com/1996fanrui/imghost/internal/storage"
+	"github.com/1996fanrui/filehub/internal/config"
+	"github.com/1996fanrui/filehub/internal/permission"
+	"github.com/1996fanrui/filehub/internal/storage"
 )
 
 // testRootName is the URL name used for the single root in every test fixture.
@@ -27,7 +27,7 @@ type testEnv struct {
 func newTestServer(t *testing.T, fs storage.FS) *testEnv {
 	t.Helper()
 	rootPath := t.TempDir()
-	dbPath := filepath.Join(t.TempDir(), "imghost.db")
+	dbPath := filepath.Join(t.TempDir(), "filehub.db")
 	ps, err := storage.Open(dbPath)
 	if err != nil {
 		t.Fatalf("open permstore: %v", err)

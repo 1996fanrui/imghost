@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/1996fanrui/imghost/internal/config"
-	"github.com/1996fanrui/imghost/internal/permission"
+	"github.com/1996fanrui/filehub/internal/config"
+	"github.com/1996fanrui/filehub/internal/permission"
 )
 
 var aclCmd = &cobra.Command{

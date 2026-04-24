@@ -15,7 +15,7 @@ definitions:
 info:
   contact: {}
   description: Self-hosted file server with per-path ACL.
-  title: imghost API
+  title: filehub API
   version: "1.0"
 paths:
   /{path}:

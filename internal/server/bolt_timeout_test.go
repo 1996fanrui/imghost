@@ -9,8 +9,8 @@ import (
 
 	bolt "go.etcd.io/bbolt"
 
-	"github.com/1996fanrui/imghost/internal/config"
-	"github.com/1996fanrui/imghost/internal/permission"
+	"github.com/1996fanrui/filehub/internal/config"
+	"github.com/1996fanrui/filehub/internal/permission"
 )
 
 // TestBboltTimeoutFailFast verifies that Start surfaces a bbolt lock
@@ -19,7 +19,7 @@ import (
 // sibling bolt.Open holds the exclusive lock for the duration.
 func TestBboltTimeoutFailFast(t *testing.T) {
 	dir := t.TempDir()
-	dbPath := filepath.Join(dir, "imghost.db")
+	dbPath := filepath.Join(dir, "filehub.db")
 
 	// Acquire the lock first so Start cannot open the file.
 	locker, err := bolt.Open(dbPath, 0o600, &bolt.Options{Timeout: time.Second})

@@ -2,20 +2,20 @@
 
 ## System Architecture
 
-imghost is a self-hosted file hosting service shipped as two native Go binaries:
+filehub is a self-hosted file hosting service shipped as two native Go binaries:
 
-- **`imghostd`** — the HTTP daemon. Long-running process. Serves file I/O and ACL management.
-- **`imghost`** — the user-facing CLI (cobra-based). Currently exposes `version` and `service {start|stop|status|logs}`. The `service` subcommands are thin wrappers over the platform's native service manager; they do not talk to the daemon over the wire.
+- **`filehubd`** — the HTTP daemon. Long-running process. Serves file I/O and ACL management.
+- **`filehub`** — the user-facing CLI (cobra-based). Currently exposes `version` and `service {start|stop|status|logs}`. The `service` subcommands are thin wrappers over the platform's native service manager; they do not talk to the daemon over the wire.
 
-Both binaries read the exact same `config.toml` resolved through XDG (`xdg.ConfigFile("imghost/config.toml")`), so their views of roots, API key, and state cannot diverge. There are no flags and no environment overrides for the config path.
+Both binaries read the exact same `config.toml` resolved through XDG (`xdg.ConfigFile("filehub/config.toml")`), so their views of roots, API key, and state cannot diverge. There are no flags and no environment overrides for the config path.
 
-Inside `imghostd` the pipeline is a single in-process HTTP stack:
+Inside `filehubd` the pipeline is a single in-process HTTP stack:
 
 1. **Routing.** A chi router exposes two surfaces. The reserved surface owns `/swagger` and `/swagger/*` and serves the generated OpenAPI UI; a hand-written method gate returns `405 Method Not Allowed` with `Allow: GET` on any non-GET (the catch-all below would otherwise swallow the request, and chi's per-router `MethodNotAllowed` is not usable when a `/*` pattern matches every method). The catch-all surface dispatches `/<root>/<path>` by splitting the first URL segment, rejecting reserved names defensively, and looking up the root in the whitelist. Unknown first segment → 404.
 2. **Path resolution.** For every matched request the router decodes the URL-escaped suffix, rejects any literal `..` segment, canonicalizes with `path.Clean`, joins under the root's physical directory with a `filepath.Rel` containment check, then runs `EvalSymlinks` on the target (or its nearest existing ancestor, so PUT of a new file still validates). Three distinct error types all map to HTTP 403. The resulting `(urlKey, physical, effectiveDefaultAccess)` triple is carried through the request context.
 3. **Handlers.** A file handler (`GET`/`PUT`/`DELETE`) and an ACL handler (`GET`/`PUT`/`DELETE` selected by a bare `?acl` query key) consume the pre-resolved context. Writes always require bearer auth; `GET` requires auth only when the resolved access is `private`.
 4. **Permission layer.** A resolver walks the URL key upward one segment at a time, returning the first explicit rule and otherwise falling back to the effective default (per-root `access` override if set, otherwise the global `default_access`). Explicit rules are stored as `public`/`private` values in an embedded bbolt database.
-5. **Storage.** File I/O goes directly to the filesystem; uploads stream into a same-directory `*.tmp`, are fsynced, then atomically renamed. bbolt lives at `<state_dir>/imghost.db` (XDG state default when `state_dir` is unset).
+5. **Storage.** File I/O goes directly to the filesystem; uploads stream into a same-directory `*.tmp`, are fsynced, then atomically renamed. bbolt lives at `<state_dir>/filehub.db` (XDG state default when `state_dir` is unset).
 
 No queue, no sidecar, no external database. TLS is out of scope and expected to terminate at a reverse proxy.
 
@@ -30,17 +30,17 @@ Typical flows:
 3. **Delete.** `DELETE /<root>/<path>` with bearer. Directories are refused with 403.
 4. **Manage ACL.** `GET|PUT|DELETE /<root>/<path>?acl`. The bare `?acl` query key is mandatory and must be the only query; otherwise 400.
 5. **Discover API.** `GET /swagger/index.html`.
-6. **Operate.** `imghost service start|stop|status|logs` manages the local `imghostd` process through the platform's native service manager.
+6. **Operate.** `filehub service start|stop|status|logs` manages the local `filehubd` process through the platform's native service manager.
 
 For the concrete schema, status codes, and request/response shapes see `docs/configuration.md`, `docs/permissions.md`, and `docs/swagger.yaml`.
 
 ## Key Technical Constraints and External Dependencies
 
-- **Pure Go, no CGO.** Cross-compiled and distributed as a native binary per platform. Two binaries ship together: `imghostd` and `imghost`.
+- **Pure Go, no CGO.** Cross-compiled and distributed as a native binary per platform. Two binaries ship together: `filehubd` and `filehub`.
 - **No external services.** bbolt is an embedded KV store; the daemon owns its own file.
-- **Config is the only input.** Both binaries read `xdg.ConfigFile("imghost/config.toml")`. No env overrides, no `--config`, no per-binary config files.
-- **Fail-fast startup.** Any of the following abort `imghostd` before the listener comes up: unknown-key/unparseable config, duplicate or reserved root name, non-absolute or non-directory root path, invalid access value, non-absolute `state_dir`, or a stale bbolt lock not acquired within 5 s. A missing `config.toml` is **not** fatal either: on first run the daemon generates a random `api_key` via `crypto/rand`, writes a minimal `config.toml` (0600) with `listen_addr = "127.0.0.1:34286"` and the fresh key, and continues startup with those values. A config with zero `[[root]]` entries is also **not** fatal: the daemon injects a public `_default` root pointing at `xdg.DataFile("imghost/data")` (the directory is created on demand). `_default` is a reserved name that users cannot claim in their own `[[root]]` entries.
-- **Service integration is platform-specific.** Linux wraps `systemctl --user` + `journalctl --user-unit`; macOS wraps `launchctl bootstrap|bootout|print` and `log show`; Windows has no native user-service surface, so every `imghost service` subcommand prints guidance and exits 0 to keep cross-platform scripts working.
+- **Config is the only input.** Both binaries read `xdg.ConfigFile("filehub/config.toml")`. No env overrides, no `--config`, no per-binary config files.
+- **Fail-fast startup.** Any of the following abort `filehubd` before the listener comes up: unknown-key/unparseable config, duplicate or reserved root name, non-absolute or non-directory root path, invalid access value, non-absolute `state_dir`, or a stale bbolt lock not acquired within 5 s. A missing `config.toml` is **not** fatal either: on first run the daemon generates a random `api_key` via `crypto/rand`, writes a minimal `config.toml` (0600) with `listen_addr = "127.0.0.1:34286"` and the fresh key, and continues startup with those values. A config with zero `[[root]]` entries is also **not** fatal: the daemon injects a public `_default` root pointing at `xdg.DataFile("filehub/data")` (the directory is created on demand). `_default` is a reserved name that users cannot claim in their own `[[root]]` entries.
+- **Service integration is platform-specific.** Linux wraps `systemctl --user` + `journalctl --user-unit`; macOS wraps `launchctl bootstrap|bootout|print` and `log show`; Windows has no native user-service surface, so every `filehub service` subcommand prints guidance and exits 0 to keep cross-platform scripts working.
 - **TLS out of scope.** Terminate at a reverse proxy.
 - **No domain awareness.** Upload responses return `{"path": "/<root>/<path>"}` — never a full URL.
 - **Streaming-friendly HTTP timeouts.** `ReadHeaderTimeout` is set (10 s) to defend against Slowloris, but no `ReadTimeout` or `WriteTimeout` is applied, so large uploads and downloads are not time-boxed. Graceful shutdown drains for up to 30 s on `SIGINT`/`SIGTERM` before bbolt is closed.
@@ -49,7 +49,7 @@ For the concrete schema, status codes, and request/response shapes see `docs/con
 
 **Two binaries, not one.** The daemon and the CLI have opposite lifecycles (long-running vs short-lived) and opposite permission needs (network listener vs local service socket). Splitting them keeps the daemon free of cobra/service-manager dependencies and lets the CLI stay trivial to run from scripts.
 
-**Explicit root whitelist.** Every user-configured URL namespace is declared as a `[[root]]` entry; adding a namespace is a config-level change that fails fast if the directory is missing or not a directory, preventing accidental exposure of unintended parts of the host filesystem. Per-root `access` overrides live on the root object itself so the resolver can honor them without re-scanning config. When the user configures no `[[root]]` at all, the daemon synthesizes a single public `_default` root under `xdg.DataFile("imghost/data")` so a brand-new install is immediately usable without editing the config.
+**Explicit root whitelist.** Every user-configured URL namespace is declared as a `[[root]]` entry; adding a namespace is a config-level change that fails fast if the directory is missing or not a directory, preventing accidental exposure of unintended parts of the host filesystem. Per-root `access` overrides live on the root object itself so the resolver can honor them without re-scanning config. When the user configures no `[[root]]` at all, the daemon synthesizes a single public `_default` root under `xdg.DataFile("filehub/data")` so a brand-new install is immediately usable without editing the config.
 
 **Single source of reserved names.** A leaf package exposes `IsName`; both config validation (to reject a clashing `root.name`) and the router (to refuse a clashing first segment) import it. The leaf package imports neither, so no cycle is possible and new reserved names are one-line additions.
 

@@ -13,11 +13,11 @@ var version = "dev"
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
-	Short: "Print the imghost CLI version and build metadata",
+	Short: "Print the filehub CLI version and build metadata",
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		commit, date := readBuildInfo()
 		out := cmd.OutOrStdout()
-		fmt.Fprintf(out, "imghost version %s\n", version)
+		fmt.Fprintf(out, "filehub version %s\n", version)
 		fmt.Fprintf(out, "commit: %s\n", commit)
 		fmt.Fprintf(out, "date: %s\n", date)
 		fmt.Fprintf(out, "go: %s\n", runtime.Version())

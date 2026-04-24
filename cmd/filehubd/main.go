@@ -1,6 +1,6 @@
-// Command imghostd runs the file hosting HTTP server.
+// Command filehubd runs the file hosting HTTP server.
 //
-// @title                       imghost API
+// @title                       filehub API
 // @version                     1.0
 // @description                 Self-hosted file server with per-path ACL.
 // @BasePath                    /
@@ -16,8 +16,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/1996fanrui/imghost/internal/config"
-	"github.com/1996fanrui/imghost/internal/server"
+	"github.com/1996fanrui/filehub/internal/config"
+	"github.com/1996fanrui/filehub/internal/server"
 )
 
 func main() {

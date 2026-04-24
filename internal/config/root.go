@@ -1,6 +1,6 @@
 package config
 
-import "github.com/1996fanrui/imghost/internal/permission"
+import "github.com/1996fanrui/filehub/internal/permission"
 
 // Root declares a URL namespace and its physical directory.
 // Access is zero-value when not set in the TOML; callers use

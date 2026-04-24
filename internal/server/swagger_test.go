@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/1996fanrui/imghost/internal/storage"
+	"github.com/1996fanrui/filehub/internal/storage"
 )
 
 // TestSwaggerUIAccessible covers AT-N942: /swagger/index.html serves the

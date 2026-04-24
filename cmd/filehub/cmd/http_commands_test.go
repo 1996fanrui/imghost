@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/1996fanrui/imghost/internal/config"
+	"github.com/1996fanrui/filehub/internal/config"
 )
 
 // withHTTPTestEnv points configLoader at a stub server and returns the
@@ -203,7 +203,7 @@ func TestACLSetRejectsInvalidAccess(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid access value")
 	}
-	if !strings.Contains(err.Error(), "imghost: acl set /p/a") {
+	if !strings.Contains(err.Error(), "filehub: acl set /p/a") {
 		t.Errorf("error must use unified format: %v", err)
 	}
 }
@@ -225,14 +225,14 @@ func TestACLRm(t *testing.T) {
 
 func TestErrorIncludesServerMessage(t *testing.T) {
 	// 404 with apierror.Response JSON body must surface the message field,
-	// wrapped in the unified "imghost: <op> <target>: <reason>" form.
+	// wrapped in the unified "filehub: <op> <target>: <reason>" form.
 	withHTTPTestEnv(t, recordingHandler(&recorded{}, 404, `{"error":"not_found","message":"not found"}`))
 	_, err := runCLI(t, "rm", "/p/a")
 	if err == nil {
 		t.Fatal("expected error for 404")
 	}
 	got := err.Error()
-	if !strings.Contains(got, "imghost: rm /p/a:") || !strings.Contains(got, "not found") {
+	if !strings.Contains(got, "filehub: rm /p/a:") || !strings.Contains(got, "not found") {
 		t.Errorf("unexpected error format: %q", got)
 	}
 	if strings.Contains(got, "404") || strings.Contains(got, "{") {

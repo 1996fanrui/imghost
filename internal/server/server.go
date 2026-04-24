@@ -12,14 +12,14 @@ import (
 	httpSwagger "github.com/swaggo/http-swagger/v2"
 	bolt "go.etcd.io/bbolt"
 
-	"github.com/1996fanrui/imghost/internal/apierror"
-	"github.com/1996fanrui/imghost/internal/config"
-	"github.com/1996fanrui/imghost/internal/permission"
-	"github.com/1996fanrui/imghost/internal/storage"
+	"github.com/1996fanrui/filehub/internal/apierror"
+	"github.com/1996fanrui/filehub/internal/config"
+	"github.com/1996fanrui/filehub/internal/permission"
+	"github.com/1996fanrui/filehub/internal/storage"
 
 	// Blank import: register generated swagger doc with swag registry so
 	// httpSwagger.WrapHandler can serve /swagger/doc.json.
-	_ "github.com/1996fanrui/imghost/docs"
+	_ "github.com/1996fanrui/filehub/docs"
 )
 
 // New builds the HTTP handler, wiring the file/ACL handlers, health, and

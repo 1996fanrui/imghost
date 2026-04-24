@@ -15,11 +15,11 @@ import (
 
 // launchdLabel is the launchd service label used by the plist. The plist
 // itself is delivered by a separate install workflow (see CLI docs).
-const launchdLabel = "com.imghost.imghostd"
+const launchdLabel = "com.filehub.filehubd"
 
 func init() {
 	adapter = darwinAdapter{}
-	NotInstalledMessage = "imghost launchd agent is not installed. See the CLI docs for how to install it."
+	NotInstalledMessage = "filehub launchd agent is not installed. See the CLI docs for how to install it."
 }
 
 type darwinAdapter struct{}

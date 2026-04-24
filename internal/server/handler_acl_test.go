@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/1996fanrui/imghost/internal/permission"
-	"github.com/1996fanrui/imghost/internal/storage"
+	"github.com/1996fanrui/filehub/internal/permission"
+	"github.com/1996fanrui/filehub/internal/storage"
 )
 
 func TestGetAclExplicit(t *testing.T) {

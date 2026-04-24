@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/1996fanrui/imghost/internal/config"
+	"github.com/1996fanrui/filehub/internal/config"
 )
 
 // baseURL derives the daemon URL from cfg.ListenAddr. A leading ":port"
@@ -75,12 +75,12 @@ func parseServerError(resp *http.Response) error {
 
 // formatCLIError produces the unified CLI error format:
 //
-//	imghost: <op> <target>: <reason>
+//	filehub: <op> <target>: <reason>
 //
 // Cobra prints the returned error to stderr; SilenceErrors on the root
 // prevents the default "Error: ..." prefix so this is the only line shown.
 func formatCLIError(op, target string, err error) error {
-	return fmt.Errorf("imghost: %s %s: %w", op, target, err)
+	return fmt.Errorf("filehub: %s %s: %w", op, target, err)
 }
 
 // humanBytes renders a byte count as a short, human-readable string.

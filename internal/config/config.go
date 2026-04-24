@@ -1,6 +1,6 @@
-// Package config loads, validates, and canonicalizes imghost's TOML config.
+// Package config loads, validates, and canonicalizes filehub's TOML config.
 //
-// Source of truth: the single file at xdg.ConfigFile("imghost/config.toml").
+// Source of truth: the single file at xdg.ConfigFile("filehub/config.toml").
 // No env-variable overrides and no --config flag — the daemon and the CLI
 // must read the exact same file.
 package config
@@ -16,8 +16,8 @@ import (
 	"github.com/adrg/xdg"
 	"github.com/pelletier/go-toml/v2"
 
-	"github.com/1996fanrui/imghost/internal/permission"
-	"github.com/1996fanrui/imghost/internal/reserved"
+	"github.com/1996fanrui/filehub/internal/permission"
+	"github.com/1996fanrui/filehub/internal/reserved"
 )
 
 // defaultRootName is the reserved name used when no [[root]] is configured.
@@ -158,7 +158,7 @@ func expandAndValidate(cfg *Config) error {
 // directory when the user has not configured any [[root]]. The directory is
 // created on demand so a brand-new install is immediately usable.
 func injectDefaultRoot(cfg *Config) error {
-	path, err := xdg.DataFile("imghost/data")
+	path, err := xdg.DataFile("filehub/data")
 	if err != nil {
 		return fmt.Errorf("resolve default root path: %w", err)
 	}

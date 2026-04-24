@@ -8,13 +8,13 @@ import (
 
 	"github.com/adrg/xdg"
 
-	"github.com/1996fanrui/imghost/internal/permission"
+	"github.com/1996fanrui/filehub/internal/permission"
 )
 
 func reloadXDG() { xdg.Reload() }
 
 // writeConfig sets XDG_CONFIG_HOME + XDG_STATE_HOME under a temp dir and
-// writes the supplied TOML as the imghost config. Returns the config path.
+// writes the supplied TOML as the filehub config. Returns the config path.
 func writeConfig(t *testing.T, toml string) string {
 	t.Helper()
 	cfgHome := t.TempDir()
@@ -25,7 +25,7 @@ func writeConfig(t *testing.T, toml string) string {
 	t.Setenv("XDG_DATA_HOME", dataHome)
 	// adrg/xdg reads env lazily on first call. Force a reload per test.
 	reloadXDG()
-	dir := filepath.Join(cfgHome, "imghost")
+	dir := filepath.Join(cfgHome, "filehub")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ path = "`+rootDir+`"
 	if cfg.Roots[0].Path != rootDir {
 		t.Errorf("root path = %q want %q", cfg.Roots[0].Path, rootDir)
 	}
-	if !strings.HasSuffix(cfg.DBPath, "imghost.db") {
+	if !strings.HasSuffix(cfg.DBPath, "filehub.db") {
 		t.Errorf("db path = %q", cfg.DBPath)
 	}
 }
@@ -104,7 +104,7 @@ func TestLoad_TildeExpansion(t *testing.T) {
 	if err != nil {
 		t.Skip("no home dir")
 	}
-	sub := filepath.Join(home, ".imghost-test-tilde")
+	sub := filepath.Join(home, ".filehub-test-tilde")
 	if err := os.MkdirAll(sub, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestLoad_TildeExpansion(t *testing.T) {
 	writeConfig(t, `
 [[root]]
 name = "photos"
-path = "~/.imghost-test-tilde"
+path = "~/.filehub-test-tilde"
 `)
 	cfg, err := Load()
 	if err != nil {
@@ -293,7 +293,7 @@ func TestLoad_ConfigMissing(t *testing.T) {
 		t.Errorf("listen_addr = %q, want loopback", cfg.ListenAddr)
 	}
 	// Bootstrap config must be persisted with 0600 perms.
-	cfgPath := filepath.Join(cfgHome, "imghost", "config.toml")
+	cfgPath := filepath.Join(cfgHome, "filehub", "config.toml")
 	st, err := os.Stat(cfgPath)
 	if err != nil {
 		t.Fatalf("stat bootstrap config: %v", err)
@@ -404,7 +404,7 @@ path = "`+d+`"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.DBPath != filepath.Join(stateDir, "imghost.db") {
+	if cfg.DBPath != filepath.Join(stateDir, "filehub.db") {
 		t.Fatalf("db path = %q", cfg.DBPath)
 	}
 }
@@ -417,7 +417,7 @@ func TestLoad_XDGStateDefault(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", stateHome)
 	reloadXDG()
 	// write config after setting xdg so reloadXDG sees it
-	dir := filepath.Join(cfgHome, "imghost")
+	dir := filepath.Join(cfgHome, "filehub")
 	_ = os.MkdirAll(dir, 0o755)
 	_ = os.WriteFile(filepath.Join(dir, "config.toml"), []byte(`
 api_key = "test-key"
@@ -429,7 +429,7 @@ path = "`+d+`"
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(stateHome, "imghost", "imghost.db")
+	want := filepath.Join(stateHome, "filehub", "filehub.db")
 	if cfg.DBPath != want {
 		t.Fatalf("db path = %q want %q", cfg.DBPath, want)
 	}
