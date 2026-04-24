@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/1996fanrui/imghost/internal/apierror"
+	"github.com/1996fanrui/filehub/internal/apierror"
 )
 
 const bearerPrefix = "Bearer "
@@ -14,7 +14,7 @@ const bearerPrefix = "Bearer "
 // challenge. All 401 responses in the server must go through this helper so
 // the challenge header is never omitted (RFC 6750 §3).
 func WriteUnauthorized(w http.ResponseWriter) {
-	w.Header().Set("WWW-Authenticate", `Bearer realm="imghost"`)
+	w.Header().Set("WWW-Authenticate", `Bearer realm="filehub"`)
 	apierror.Unauthorized(w, "missing or invalid bearer token")
 }
 

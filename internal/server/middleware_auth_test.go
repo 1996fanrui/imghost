@@ -21,7 +21,7 @@ func assertUnauthorized(t *testing.T, rr *httptest.ResponseRecorder) {
 	if rr.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d want 401", rr.Code)
 	}
-	if got := rr.Header().Get("WWW-Authenticate"); got != `Bearer realm="imghost"` {
+	if got := rr.Header().Get("WWW-Authenticate"); got != `Bearer realm="filehub"` {
 		t.Fatalf("WWW-Authenticate = %q", got)
 	}
 }

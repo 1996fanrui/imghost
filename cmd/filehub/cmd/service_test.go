@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/1996fanrui/imghost/internal/config"
+	"github.com/1996fanrui/filehub/internal/config"
 )
 
 type fakeAdapter struct {
@@ -82,7 +82,7 @@ func TestServiceRequireConfigFailure(t *testing.T) {
 }
 
 // TestServiceWindowsExitsZeroForAllSubcommands pins REQ-46FE: on Windows the
-// CLI has no native service integration, and every `imghost service <op>`
+// CLI has no native service integration, and every `filehub service <op>`
 // must exit 0 — even when the shared config.toml is unreadable. We flip the
 // package-level serviceGOOS to simulate Windows and use an adapter that
 // returns nil (matching the real windowsAdapter contract).

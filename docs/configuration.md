@@ -1,22 +1,22 @@
 # Configuration
 
-imghost is configured entirely through one TOML file. There is no environment-variable override and no `--config` flag: both the daemon (`imghostd`) and the companion CLI (`imghost`, which wraps `version` and local `service` management) read the exact same file so their views of the system cannot diverge.
+filehub is configured entirely through one TOML file. There is no environment-variable override and no `--config` flag: both the daemon (`filehubd`) and the companion CLI (`filehub`, which wraps `version` and local `service` management) read the exact same file so their views of the system cannot diverge.
 
 ## File location
 
-The path is resolved via [`github.com/adrg/xdg`](https://github.com/adrg/xdg) as `xdg.ConfigFile("imghost/config.toml")`:
+The path is resolved via [`github.com/adrg/xdg`](https://github.com/adrg/xdg) as `xdg.ConfigFile("filehub/config.toml")`:
 
 | OS      | Default path                                             |
 | ------- | -------------------------------------------------------- |
-| Linux   | `$XDG_CONFIG_HOME/imghost/config.toml` (default `~/.config/imghost/config.toml`) |
-| macOS   | `~/Library/Application Support/imghost/config.toml`      |
-| Windows | `%APPDATA%\imghost\config.toml`                          |
+| Linux   | `$XDG_CONFIG_HOME/filehub/config.toml` (default `~/.config/filehub/config.toml`) |
+| macOS   | `~/Library/Application Support/filehub/config.toml`      |
+| Windows | `%APPDATA%\filehub\config.toml`                          |
 
 Set `XDG_CONFIG_HOME` to redirect the config location (e.g. for tests).
 
 ## First-run bootstrap
 
-When this file does not exist, `imghostd` (and the `imghost` CLI when it invokes `config.Load`) generates a random 256-bit `api_key` via `crypto/rand`, then writes a minimal `config.toml` at the path above with `0600` permissions. The generated file contains `listen_addr = "127.0.0.1:34286"` and the fresh `api_key`. Start-up continues with those values; subsequent runs read the file like any other. Rotate the key by editing `api_key`; delete the file to force a fresh bootstrap.
+When this file does not exist, `filehubd` (and the `filehub` CLI when it invokes `config.Load`) generates a random 256-bit `api_key` via `crypto/rand`, then writes a minimal `config.toml` at the path above with `0600` permissions. The generated file contains `listen_addr = "127.0.0.1:34286"` and the fresh `api_key`. Start-up continues with those values; subsequent runs read the file like any other. Rotate the key by editing `api_key`; delete the file to force a fresh bootstrap.
 
 ## Schema
 
@@ -26,7 +26,7 @@ When this file does not exist, `imghostd` (and the `imghost` CLI when it invokes
 | `api_key`         | string         | — (auto-generated on first run) | Bearer token required for all writes. Must be non-empty when the config file exists. |
 | `default_access`  | `"public"`/`"private"` | `"public"` | Fallback access when neither the path nor any ancestor has an explicit rule. |
 | `state_dir`       | string         | `""`       | Empty selects the XDG state default. When set, must be absolute after `~` expansion. |
-| `[[root]]`        | array of table | —          | Optional. When omitted, the daemon injects a public `_default` root at `xdg.DataFile("imghost/data")`. |
+| `[[root]]`        | array of table | —          | Optional. When omitted, the daemon injects a public `_default` root at `xdg.DataFile("filehub/data")`. |
 | `root.name`       | string         | —          | URL first segment. Must be non-empty, not contain `/`, not equal `.`/`..`, and not clash with a reserved prefix. |
 | `root.path`       | string         | —          | Absolute after `~` expansion, must exist as a directory.                              |
 | `root.access`     | `"public"`/`"private"` | inherit `default_access` | Optional per-root override. |
@@ -49,19 +49,19 @@ path = "/mnt/nas/photos"
 
 ## State directory
 
-`state_dir` is where bbolt stores the permission database (`imghost.db`).
+`state_dir` is where bbolt stores the permission database (`filehub.db`).
 
-- Empty → `xdg.StateFile("imghost/imghost.db")`:
-  - Linux: `~/.local/state/imghost/imghost.db`
-  - macOS: `~/Library/Application Support/imghost/imghost.db`
-  - Windows: `%LOCALAPPDATA%\imghost\imghost.db`
-- Non-empty → must be absolute; bbolt file is `<state_dir>/imghost.db`.
+- Empty → `xdg.StateFile("filehub/filehub.db")`:
+  - Linux: `~/.local/state/filehub/filehub.db`
+  - macOS: `~/Library/Application Support/filehub/filehub.db`
+  - Windows: `%LOCALAPPDATA%\filehub\filehub.db`
+- Non-empty → must be absolute; bbolt file is `<state_dir>/filehub.db`.
 
 `~` at the start of `state_dir` or `root.path` is expanded to `os.UserHomeDir()`.
 
 ## Start-up validation (fail-fast)
 
-`imghostd` refuses to start if any of the following hold; the process exits non-zero with an explanatory stderr line:
+`filehubd` refuses to start if any of the following hold; the process exits non-zero with an explanatory stderr line:
 
 1. Config file unreadable / contains unknown keys / TOML parse error. (A missing file is not an error: it triggers first-run bootstrap above.)
 2. `api_key` present in the file but empty.

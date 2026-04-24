@@ -10,8 +10,8 @@ import (
 // windowsGuidance is the platform-specific message printed on every service
 // subcommand. Windows has no first-class user service integration in this
 // MVP (REQ-46FE); we print guidance and exit 0 so scripts that blindly
-// invoke `imghost service <op>` on Windows do not fail.
-const windowsGuidance = "Windows has no native user service integration. Run imghostd directly or configure a Task Scheduler job."
+// invoke `filehub service <op>` on Windows do not fail.
+const windowsGuidance = "Windows has no native user service integration. Run filehubd directly or configure a Task Scheduler job."
 
 func init() {
 	adapter = windowsAdapter{}

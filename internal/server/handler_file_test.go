@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/1996fanrui/imghost/internal/permission"
-	"github.com/1996fanrui/imghost/internal/storage"
+	"github.com/1996fanrui/filehub/internal/permission"
+	"github.com/1996fanrui/filehub/internal/storage"
 )
 
 func doReq(t *testing.T, method, url string, body io.Reader, headers map[string]string) *http.Response {

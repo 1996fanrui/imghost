@@ -1,4 +1,4 @@
-module github.com/1996fanrui/imghost
+module github.com/1996fanrui/filehub
 
 go 1.26.1
 

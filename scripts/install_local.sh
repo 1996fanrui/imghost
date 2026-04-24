@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# install_local.sh — Build imghost + imghostd from the current source tree and
-# install them to ~/.local/bin, then (re)start the imghostd user service.
+# install_local.sh — Build filehub + filehubd from the current source tree and
+# install them to ~/.local/bin, then (re)start the filehubd user service.
 #
 # Usage:
 #   bash scripts/install_local.sh
 #
 # Environment variables:
 #   GO_BIN=go                     # override the `go` binary
-#   IMGHOST_NO_MODIFY_PATH=1      # do not write PATH to shell profile
+#   FILEHUB_NO_MODIFY_PATH=1      # do not write PATH to shell profile
 #
 # Prerequisite: Go toolchain installed and reachable via ${GO_BIN}.
 #
@@ -20,7 +20,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 INSTALL_DIR="${HOME}/.local/bin"
-LAUNCHD_LABEL="com.imghost.imghostd"
+LAUNCHD_LABEL="com.filehub.filehubd"
 GO_BIN="${GO_BIN:-go}"
 
 check_go() {
@@ -42,16 +42,16 @@ build_binaries() {
   mkdir -p "${INSTALL_DIR}"
   cd "${PROJECT_ROOT}"
 
-  echo "Building imghost and imghostd from ${PROJECT_ROOT}..."
-  "${GO_BIN}" build -ldflags="-s -w" -o "${INSTALL_DIR}/imghost"  ./cmd/imghost
-  "${GO_BIN}" build -ldflags="-s -w" -o "${INSTALL_DIR}/imghostd" ./cmd/imghostd
+  echo "Building filehub and filehubd from ${PROJECT_ROOT}..."
+  "${GO_BIN}" build -ldflags="-s -w" -o "${INSTALL_DIR}/filehub"  ./cmd/filehub
+  "${GO_BIN}" build -ldflags="-s -w" -o "${INSTALL_DIR}/filehubd" ./cmd/filehubd
 
-  echo "Installed: ${INSTALL_DIR}/imghost"
-  echo "Installed: ${INSTALL_DIR}/imghostd"
+  echo "Installed: ${INSTALL_DIR}/filehub"
+  echo "Installed: ${INSTALL_DIR}/filehubd"
 }
 
 ensure_path() {
-  if [[ "${IMGHOST_NO_MODIFY_PATH:-0}" == "1" ]]; then
+  if [[ "${FILEHUB_NO_MODIFY_PATH:-0}" == "1" ]]; then
     return
   fi
 
@@ -77,8 +77,8 @@ ensure_path() {
     *)    profile="${HOME}/.profile" ;;
   esac
 
-  local marker_begin="# >>> imghost installer >>>"
-  local marker_end="# <<< imghost installer <<<"
+  local marker_begin="# >>> filehub installer >>>"
+  local marker_end="# <<< filehub installer <<<"
 
   if [[ -f "${profile}" ]] && grep -qF "${marker_begin}" "${profile}"; then
     export PATH="${INSTALL_DIR}:${PATH}"
@@ -105,17 +105,17 @@ enable_linger() {
 
 setup_systemd() {
   local service_dir="${HOME}/.config/systemd/user"
-  local service_file="${service_dir}/imghostd.service"
+  local service_file="${service_dir}/filehubd.service"
 
   mkdir -p "${service_dir}"
 
   cat > "${service_file}.tmp" <<EOF
 [Unit]
-Description=imghost daemon
+Description=filehub daemon
 
 [Service]
 Type=simple
-ExecStart=${INSTALL_DIR}/imghostd
+ExecStart=${INSTALL_DIR}/filehubd
 SuccessExitStatus=143
 Restart=on-failure
 RestartSec=5
@@ -130,8 +130,8 @@ EOF
   mv -f "${service_file}.tmp" "${service_file}"
 
   systemctl --user daemon-reload
-  systemctl --user enable imghostd
-  systemctl --user restart imghostd
+  systemctl --user enable filehubd
+  systemctl --user restart filehubd
 }
 
 setup_launchd() {
@@ -147,12 +147,12 @@ setup_launchd() {
 <plist version="1.0">
 <dict>
   <key>Label</key>          <string>${LAUNCHD_LABEL}</string>
-  <key>ProgramArguments</key><array><string>${INSTALL_DIR}/imghostd</string></array>
+  <key>ProgramArguments</key><array><string>${INSTALL_DIR}/filehubd</string></array>
   <key>RunAtLoad</key>      <true/>
   <key>KeepAlive</key>
     <dict><key>SuccessfulExit</key><false/></dict>
-  <key>StandardOutPath</key><string>${HOME}/Library/Logs/imghostd.log</string>
-  <key>StandardErrorPath</key><string>${HOME}/Library/Logs/imghostd.log</string>
+  <key>StandardOutPath</key><string>${HOME}/Library/Logs/filehubd.log</string>
+  <key>StandardErrorPath</key><string>${HOME}/Library/Logs/filehubd.log</string>
 </dict>
 </plist>
 EOF
@@ -170,11 +170,11 @@ EOF
 print_summary() {
   echo ""
   echo "Local install complete."
-  echo "  CLI    : ${INSTALL_DIR}/imghost"
-  echo "  daemon : ${INSTALL_DIR}/imghostd"
+  echo "  CLI    : ${INSTALL_DIR}/filehub"
+  echo "  daemon : ${INSTALL_DIR}/filehubd"
   case "${OS}" in
-    linux)  echo "Service: systemctl --user status imghostd" ;;
-    darwin) echo "Service: launchctl list | grep imghostd" ;;
+    linux)  echo "Service: systemctl --user status filehubd" ;;
+    darwin) echo "Service: launchctl list | grep filehubd" ;;
   esac
   echo "Swagger UI: http://localhost:34286/swagger/index.html"
 }

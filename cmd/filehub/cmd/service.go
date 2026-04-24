@@ -40,12 +40,12 @@ var adapter serviceAdapter
 
 var serviceCmd = &cobra.Command{
 	Use:               "service",
-	Short:             "Manage the imghostd background service",
+	Short:             "Manage the filehubd background service",
 	PersistentPreRunE: serviceConfigGate,
 }
 
 // serviceConfigGate enforces REQ-46FE: on Windows the CLI has no native
-// service integration, so every `imghost service <op>` must exit 0 with a
+// service integration, so every `filehub service <op>` must exit 0 with a
 // guidance line — including when the shared config.toml is missing. Gating
 // requireConfig behind the non-Windows check guarantees the Windows adapter
 // reaches its guidance path regardless of config state.
@@ -71,7 +71,7 @@ func init() {
 func newServiceSubcommand(op serviceOp) *cobra.Command {
 	return &cobra.Command{
 		Use:   string(op),
-		Short: fmt.Sprintf("%s the imghostd service", op),
+		Short: fmt.Sprintf("%s the filehubd service", op),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			err := adapter.run(op, cmd.OutOrStdout(), cmd.ErrOrStderr())
 			if err == errServiceNotInstalled {

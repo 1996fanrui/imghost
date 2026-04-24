@@ -10,13 +10,13 @@ import (
 )
 
 // ConfigRelPath is the path of the config file under the XDG config root.
-const ConfigRelPath = "imghost/config.toml"
+const ConfigRelPath = "filehub/config.toml"
 
 // StateDBName is the fixed bbolt database filename within state_dir.
-const StateDBName = "imghost.db"
+const StateDBName = "filehub.db"
 
 // stateRelPath is the path of the state db under the XDG state root.
-const stateRelPath = "imghost/" + StateDBName
+const stateRelPath = "filehub/" + StateDBName
 
 // configFilePath resolves the XDG config file path. xdg.ConfigFile creates
 // parent directories if missing; this is acceptable during Load since any

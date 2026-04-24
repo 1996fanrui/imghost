@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Install or upgrade imghost (imghost CLI + imghostd daemon) from GitHub Releases.
+# Install or upgrade filehub (filehub CLI + filehubd daemon) from GitHub Releases.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/1996fanrui/imghost/main/install.sh | bash
-#   curl -fsSL https://raw.githubusercontent.com/1996fanrui/imghost/main/install.sh | bash -s -- v0.1.1
-#   curl -fsSL https://raw.githubusercontent.com/1996fanrui/imghost/main/install.sh | bash -s -- --pre
+#   curl -fsSL https://raw.githubusercontent.com/1996fanrui/filehub/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/1996fanrui/filehub/main/install.sh | bash -s -- v0.1.1
+#   curl -fsSL https://raw.githubusercontent.com/1996fanrui/filehub/main/install.sh | bash -s -- --pre
 #
 # Examples:
 #   bash install.sh                   # install latest stable release
@@ -13,23 +13,23 @@
 #   bash install.sh --pre             # install latest release (including pre-releases)
 #
 # Environment variables:
-#   IMGHOST_NO_MODIFY_PATH=1          # do not write PATH to shell profile
+#   FILEHUB_NO_MODIFY_PATH=1          # do not write PATH to shell profile
 #
 # What this script does:
 #   1. Resolves the target version from the GitHub Releases API.
-#   2. Downloads imghost and imghostd binaries for your OS/arch to ~/.local/bin.
+#   2. Downloads filehub and filehubd binaries for your OS/arch to ~/.local/bin.
 #   3. Ensures ~/.local/bin is on PATH via a marker block in your shell profile.
-#   4. Linux : writes ~/.config/systemd/user/imghostd.service, enables linger,
-#              and runs `systemctl --user enable --now imghostd`.
-#   5. macOS : writes ~/Library/LaunchAgents/com.imghost.imghostd.plist and
+#   4. Linux : writes ~/.config/systemd/user/filehubd.service, enables linger,
+#              and runs `systemctl --user enable --now filehubd`.
+#   5. macOS : writes ~/Library/LaunchAgents/com.filehub.filehubd.plist and
 #              bootstraps it into the gui/$UID domain.
 
 set -e
 
 # Constants (read-only; safe at source-time).
-GITHUB_REPO="1996fanrui/imghost"
+GITHUB_REPO="1996fanrui/filehub"
 INSTALL_DIR="${HOME}/.local/bin"
-LAUNCHD_LABEL="com.imghost.imghostd"
+LAUNCHD_LABEL="com.filehub.filehubd"
 
 # ---------------------------------------------------------------------------
 # Helper functions (pure; no side effects at source-time).
@@ -100,9 +100,9 @@ download_binaries() {
   local want_version="${VERSION#v}"
   local need_download=true
 
-  if [[ -x "${INSTALL_DIR}/imghost" ]]; then
+  if [[ -x "${INSTALL_DIR}/filehub" ]]; then
     local current_version
-    current_version=$("${INSTALL_DIR}/imghost" version 2>/dev/null | awk 'NR==1 {print $3}' || true)
+    current_version=$("${INSTALL_DIR}/filehub" version 2>/dev/null | awk 'NR==1 {print $3}' || true)
     if [[ -n "${current_version}" && "${current_version}" == "${want_version}" ]]; then
       need_download=false
       echo ""
@@ -121,24 +121,24 @@ download_binaries() {
   trap 'rm -rf "${tmp_dir}"' EXIT
 
   echo ""
-  echo "Downloading imghost_${suffix}..."
-  curl -fSL "${base_url}/imghost_${suffix}" -o "${tmp_dir}/imghost_${suffix}"
+  echo "Downloading filehub_${suffix}..."
+  curl -fSL "${base_url}/filehub_${suffix}" -o "${tmp_dir}/filehub_${suffix}"
 
-  echo "Downloading imghostd_${suffix}..."
-  curl -fSL "${base_url}/imghostd_${suffix}" -o "${tmp_dir}/imghostd_${suffix}"
+  echo "Downloading filehubd_${suffix}..."
+  curl -fSL "${base_url}/filehubd_${suffix}" -o "${tmp_dir}/filehubd_${suffix}"
 
   mkdir -p "${INSTALL_DIR}"
-  install -m 755 "${tmp_dir}/imghost_${suffix}"  "${INSTALL_DIR}/imghost"
-  install -m 755 "${tmp_dir}/imghostd_${suffix}" "${INSTALL_DIR}/imghostd"
+  install -m 755 "${tmp_dir}/filehub_${suffix}"  "${INSTALL_DIR}/filehub"
+  install -m 755 "${tmp_dir}/filehubd_${suffix}" "${INSTALL_DIR}/filehubd"
 
   echo ""
-  echo "Installed: ${INSTALL_DIR}/imghost"
-  echo "Installed: ${INSTALL_DIR}/imghostd"
+  echo "Installed: ${INSTALL_DIR}/filehub"
+  echo "Installed: ${INSTALL_DIR}/filehubd"
 }
 
 ensure_path() {
   # Respect opt-out.
-  if [[ "${IMGHOST_NO_MODIFY_PATH:-0}" == "1" ]]; then
+  if [[ "${FILEHUB_NO_MODIFY_PATH:-0}" == "1" ]]; then
     return
   fi
 
@@ -165,8 +165,8 @@ ensure_path() {
     *)    profile="${HOME}/.profile" ;;
   esac
 
-  local marker_begin="# >>> imghost installer >>>"
-  local marker_end="# <<< imghost installer <<<"
+  local marker_begin="# >>> filehub installer >>>"
+  local marker_end="# <<< filehub installer <<<"
 
   if [[ -f "${profile}" ]] && grep -qF "${marker_begin}" "${profile}"; then
     # Already installed the marker block; nothing to do.
@@ -186,19 +186,19 @@ ensure_path() {
 }
 
 setup_systemd() {
-  local imghostd_bin="${INSTALL_DIR}/imghostd"
+  local filehubd_bin="${INSTALL_DIR}/filehubd"
   local service_dir="${HOME}/.config/systemd/user"
-  local service_file="${service_dir}/imghostd.service"
+  local service_file="${service_dir}/filehubd.service"
 
   mkdir -p "${service_dir}"
 
   cat > "${service_file}.tmp" <<EOF
 [Unit]
-Description=imghost daemon
+Description=filehub daemon
 
 [Service]
 Type=simple
-ExecStart=${imghostd_bin}
+ExecStart=${filehubd_bin}
 SuccessExitStatus=143
 Restart=on-failure
 RestartSec=5
@@ -213,7 +213,7 @@ EOF
   mv -f "${service_file}.tmp" "${service_file}"
 
   systemctl --user daemon-reload
-  systemctl --user enable --now imghostd
+  systemctl --user enable --now filehubd
 }
 
 enable_linger() {
@@ -224,7 +224,7 @@ enable_linger() {
 }
 
 setup_launchd() {
-  local imghostd_bin="${INSTALL_DIR}/imghostd"
+  local filehubd_bin="${INSTALL_DIR}/filehubd"
   local agents_dir="${HOME}/Library/LaunchAgents"
   local plist_file="${agents_dir}/${LAUNCHD_LABEL}.plist"
 
@@ -237,12 +237,12 @@ setup_launchd() {
 <plist version="1.0">
 <dict>
   <key>Label</key>          <string>${LAUNCHD_LABEL}</string>
-  <key>ProgramArguments</key><array><string>${imghostd_bin}</string></array>
+  <key>ProgramArguments</key><array><string>${filehubd_bin}</string></array>
   <key>RunAtLoad</key>      <true/>
   <key>KeepAlive</key>
     <dict><key>SuccessfulExit</key><false/></dict>
-  <key>StandardOutPath</key><string>${HOME}/Library/Logs/imghostd.log</string>
-  <key>StandardErrorPath</key><string>${HOME}/Library/Logs/imghostd.log</string>
+  <key>StandardOutPath</key><string>${HOME}/Library/Logs/filehubd.log</string>
+  <key>StandardErrorPath</key><string>${HOME}/Library/Logs/filehubd.log</string>
 </dict>
 </plist>
 EOF
@@ -259,13 +259,13 @@ EOF
 
 print_summary() {
   echo ""
-  echo "Installation complete. imghost ${VERSION} is ready."
-  echo "  CLI    : ${INSTALL_DIR}/imghost"
-  echo "  daemon : ${INSTALL_DIR}/imghostd"
+  echo "Installation complete. filehub ${VERSION} is ready."
+  echo "  CLI    : ${INSTALL_DIR}/filehub"
+  echo "  daemon : ${INSTALL_DIR}/filehubd"
   echo ""
   case "$(uname -s)" in
-    Linux)  echo "Linux:  systemctl --user status imghostd" ;;
-    Darwin) echo "macOS:  launchctl list | grep imghostd" ;;
+    Linux)  echo "Linux:  systemctl --user status filehubd" ;;
+    Darwin) echo "macOS:  launchctl list | grep filehubd" ;;
   esac
   echo "Swagger UI: http://localhost:34286/swagger/index.html"
 }

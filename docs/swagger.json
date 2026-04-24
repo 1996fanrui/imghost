@@ -2,7 +2,7 @@
     "swagger": "2.0",
     "info": {
         "description": "Self-hosted file server with per-path ACL.",
-        "title": "imghost API",
+        "title": "filehub API",
         "contact": {},
         "version": "1.0"
     },

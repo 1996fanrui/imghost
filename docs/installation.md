@@ -1,12 +1,12 @@
 # Installation
 
-imghost ships two binaries:
+filehub ships two binaries:
 
-- `imghost` — the CLI used to manage roots, ACLs, and the daemon lifecycle.
-- `imghostd` — the long-running HTTP server that stores and serves images.
+- `filehub` — the CLI used to manage roots, ACLs, and the daemon lifecycle.
+- `filehubd` — the long-running HTTP server that stores and serves images.
 
 The one-line installer downloads both, puts them on your `PATH`, and wires
-`imghostd` into your platform's user-level service manager so it starts on
+`filehubd` into your platform's user-level service manager so it starts on
 login.
 
 ## One-line install
@@ -14,26 +14,26 @@ login.
 ### Linux / macOS
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/1996fanrui/imghost/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/1996fanrui/filehub/main/install.sh | bash
 ```
 
 ### Windows (PowerShell)
 
 ```powershell
-iwr https://raw.githubusercontent.com/1996fanrui/imghost/main/install.ps1 -UseBasicParsing | iex
+iwr https://raw.githubusercontent.com/1996fanrui/filehub/main/install.ps1 -UseBasicParsing | iex
 ```
 
-The PowerShell installer downloads `imghost.exe` and `imghostd.exe` into
-`%LOCALAPPDATA%\Programs\imghost\` and appends that directory to your user
+The PowerShell installer downloads `filehub.exe` and `filehubd.exe` into
+`%LOCALAPPDATA%\Programs\filehub\` and appends that directory to your user
 `PATH`. It does not register a Windows service — see
-[Running imghostd on Windows](#running-imghostd-on-windows) below.
+[Running filehubd on Windows](#running-filehubd-on-windows) below.
 
 To select a channel or pin a version, download the script and invoke it with
 parameters:
 
 ```powershell
 # latest stable (default)
-iwr https://raw.githubusercontent.com/1996fanrui/imghost/main/install.ps1 -UseBasicParsing -OutFile install.ps1
+iwr https://raw.githubusercontent.com/1996fanrui/filehub/main/install.ps1 -UseBasicParsing -OutFile install.ps1
 ./install.ps1
 
 # latest release, including pre-releases (alpha)
@@ -48,20 +48,20 @@ If you run the `bash` command from a Windows-like shell (MSYS, MinGW, Cygwin),
 the script refuses to proceed and directs you to `install.ps1`. Use PowerShell
 instead.
 
-#### Running imghostd on Windows
+#### Running filehubd on Windows
 
 `install.ps1` intentionally leaves daemon supervision to the user. Two common
 options:
 
-1. Run `imghostd.exe` manually from any new PowerShell session (the new session
+1. Run `filehubd.exe` manually from any new PowerShell session (the new session
    picks up the updated `PATH`).
-2. Register a Windows Task Scheduler task that runs `imghostd.exe` at logon.
+2. Register a Windows Task Scheduler task that runs `filehubd.exe` at logon.
    A minimal recipe:
 
    ```powershell
-   $action  = New-ScheduledTaskAction  -Execute "$env:LOCALAPPDATA\Programs\imghost\imghostd.exe"
+   $action  = New-ScheduledTaskAction  -Execute "$env:LOCALAPPDATA\Programs\filehub\filehubd.exe"
    $trigger = New-ScheduledTaskTrigger -AtLogOn
-   Register-ScheduledTask -TaskName 'imghostd' -Action $action -Trigger $trigger
+   Register-ScheduledTask -TaskName 'filehubd' -Action $action -Trigger $trigger
    ```
 
    Adjust the trigger/settings as needed. The installer does not create this
@@ -94,22 +94,22 @@ Releases API and selects the expected version without touching the system.
 1. Rejects Windows-like shells (`$OSTYPE` matching `msys*`/`mingw*`/`cygwin*`).
 2. Resolves the target version via the GitHub Releases API (or uses the tag
    you passed explicitly).
-3. If `~/.local/bin/imghost` already reports the target version, skips the
-   download. Otherwise, downloads `imghost_<os>_<arch>` and
-   `imghostd_<os>_<arch>` into a tempdir and installs them with mode `0755`
+3. If `~/.local/bin/filehub` already reports the target version, skips the
+   download. Otherwise, downloads `filehub_<os>_<arch>` and
+   `filehubd_<os>_<arch>` into a tempdir and installs them with mode `0755`
    to `~/.local/bin/`.
 4. Ensures `~/.local/bin` is on your `PATH` by appending a marker block to
    your shell profile (zsh → `~/.zshrc`; bash on Linux → `~/.bashrc`;
    bash on macOS → `~/.bash_profile`; otherwise `~/.profile`). The block is
-   delimited by `# >>> imghost installer >>>` / `# <<< imghost installer <<<`
+   delimited by `# >>> filehub installer >>>` / `# <<< filehub installer <<<`
    and is appended only once.
-5. **Linux**: writes `~/.config/systemd/user/imghostd.service`, runs
+5. **Linux**: writes `~/.config/systemd/user/filehubd.service`, runs
    `loginctl enable-linger "$USER"` so the daemon survives logout, then
-   `systemctl --user daemon-reload` and `systemctl --user enable --now imghostd`.
-6. **macOS**: writes `~/Library/LaunchAgents/com.imghost.imghostd.plist` and
+   `systemctl --user daemon-reload` and `systemctl --user enable --now filehubd`.
+6. **macOS**: writes `~/Library/LaunchAgents/com.filehub.filehubd.plist` and
    bootstraps it into the `gui/$UID` launchd domain using the modern
    `launchctl bootstrap` / `launchctl bootout` APIs (the same calls
-   `imghost service start|stop` uses).
+   `filehub service start|stop` uses).
 
 Re-running the installer is equivalent to an upgrade: the version check is
 idempotent, the `systemd` unit / launchd plist are regenerated, and the
@@ -119,16 +119,16 @@ service is reloaded.
 
 ```bash
 # CLI is on PATH
-imghost version
+filehub version
 
 # daemon is running
 # Linux:
-systemctl --user status imghostd
-journalctl --user -u imghostd -f
+systemctl --user status filehubd
+journalctl --user -u filehubd -f
 
 # macOS:
-launchctl list | grep imghostd
-tail -f ~/Library/Logs/imghostd.log
+launchctl list | grep filehubd
+tail -f ~/Library/Logs/filehubd.log
 ```
 
 Open the swagger UI to confirm the daemon is serving:
@@ -145,7 +145,7 @@ data directory if you have not configured any `[[root]]` in your
 
 | Name                      | Purpose                                                |
 |---------------------------|--------------------------------------------------------|
-| `IMGHOST_NO_MODIFY_PATH`  | Set to `1` to skip writing the PATH marker block.      |
+| `FILEHUB_NO_MODIFY_PATH`  | Set to `1` to skip writing the PATH marker block.      |
 
 ## Troubleshooting
 
@@ -170,22 +170,22 @@ sudo loginctl enable-linger "$USER"
 ### Port 34286 already in use
 
 The daemon listens on `127.0.0.1:34286` by default. If another process holds
-the port, `systemctl --user status imghostd` / `launchctl list` will show the
+the port, `systemctl --user status filehubd` / `launchctl list` will show the
 daemon failing to start. Identify the conflicting process with
 `ss -ltnp | grep 34286` (Linux) or `lsof -iTCP:34286 -sTCP:LISTEN` (macOS),
-stop it, then restart imghostd:
+stop it, then restart filehubd:
 
 ```bash
-systemctl --user restart imghostd           # Linux
-launchctl kickstart -k gui/$(id -u)/com.imghost.imghostd   # macOS
+systemctl --user restart filehubd           # Linux
+launchctl kickstart -k gui/$(id -u)/com.filehub.filehubd   # macOS
 ```
 
 ### macOS log divergence
 
 The launchd plist routes stdout and stderr to
-`~/Library/Logs/imghostd.log`. The `imghost service logs` CLI subcommand
+`~/Library/Logs/filehubd.log`. The `filehub service logs` CLI subcommand
 currently queries macOS unified logging (`log show --predicate
-"subsystem == com.imghost.imghostd"`), but `imghostd` does not yet emit via
+"subsystem == com.filehub.filehubd"`), but `filehubd` does not yet emit via
 `os_log` — so on macOS, read the log file directly until the daemon is
-migrated to unified logging. On Linux, `imghost service logs` maps to
-`journalctl --user -u imghostd` and works as expected.
+migrated to unified logging. On Linux, `filehub service logs` maps to
+`journalctl --user -u filehubd` and works as expected.
